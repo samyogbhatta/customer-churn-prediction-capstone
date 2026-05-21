@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pkl
+*.joblib
+.streamlit/
+.idea/
+.vscode/
+.next/
+node_modules/
+llvmlite    
