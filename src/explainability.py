@@ -186,8 +186,10 @@ def plot_local_shap(contributions, max_display=10, theme_dark=True):
             x=0.0
         ),
         xaxis=dict(
-            title="SHAP Value (Impact on Prediction Log-Odds)",
-            titlefont=dict(size=11, color=text_color),
+            title=dict(
+                text="SHAP Value (Impact on Prediction Log-Odds)",
+                font=dict(size=11, color=text_color)
+            ),
             tickfont=dict(color=text_color),
             gridcolor=grid_color,
             zerolinecolor=text_color,
