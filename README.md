@@ -57,7 +57,7 @@ customer-churn-prediction-capstone/
 
 ---
 
-## Local Installation & Setup
+## Local Installation & Setup (Python version 3.12.0)
 
 Follow these steps to run the pipeline and dashboard locally:
 
