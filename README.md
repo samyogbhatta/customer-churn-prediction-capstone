@@ -70,6 +70,9 @@ venv\Scripts\activate
 
 # Install requirements
 pip install -r requirements.txt
+
+#Freeze requirement.txt
+pip freeze > requirements.txt
 ```
 
 ### 2. Generate the Dataset
