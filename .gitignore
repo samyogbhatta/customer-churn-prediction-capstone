@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 *.pkl
 *.joblib
+!models/preprocessor.joblib
 .streamlit/
 .idea/
 .vscode/
