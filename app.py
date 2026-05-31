@@ -215,11 +215,11 @@ st.sidebar.title("Dashboard Controls")
 # Mode Selection
 app_mode = st.sidebar.radio(
     "Select Interface Mode",
-    ["📊 Executive Overview", "🔍 Database Explorer", "🧪 What-If Simulator"]
+    ["Executive Overview", "Database Explorer", " What-If Simulator"]
 )
 
 # Sidebar Filters (Apply to Executive Overview and Database Explorer)
-if app_mode in ["📊 Executive Overview", "🔍 Database Explorer"]:
+if app_mode in ["Executive Overview", "🔍 Database Explorer"]:
     st.sidebar.subheader("Filter Data")
     genders = ["All"] + list(df_raw["gender"].unique())
     gender_filter = st.sidebar.selectbox("Gender", genders)
@@ -242,7 +242,7 @@ else:
     filtered_df = df_raw.copy()
 
 # Compute and display KPIs only for non-batch modes
-if app_mode != "📂 Batch Prediction & Risk Explorer":
+if app_mode != "Batch Prediction & Risk Explorer":
     total_customers = len(filtered_df)
     overall_churn_rate = (filtered_df["churn"].mean() * 100) if total_customers > 0 else 0.0
     model_accuracy = metrics_data.get("accuracy", 0.85)
@@ -291,8 +291,8 @@ if app_mode != "📂 Batch Prediction & Risk Explorer":
     st.markdown("<hr>", unsafe_allow_html=True)
 
 # ----------------- MODE 1: EXECUTIVE OVERVIEW -----------------
-if app_mode == "📊 Executive Overview":
-    st.subheader("📊 Executive Overview & Demographic Insights")
+if app_mode == "Eecutive Overview":
+    st.subheader("Executive Overview & Demographic Insights")
     
     col1, col2 = st.columns(2)
     
@@ -453,7 +453,7 @@ elif app_mode == "🔍 Database Explorer":
                 st.metric("Complaints 30 Days", f"{customer_row['num_complaints_30d'].values[0]}")
                 st.metric("Resolution Time", f"{customer_row['avg_resolution_time_hours'].values[0]:.1f} Hrs")
                 
-            st.markdown("### 📈 Trend Indicators")
+            st.markdown("### Trend Indicators")
             trend_col_1, trend_col_2, trend_col_3 = st.columns(3)
             with trend_col_1:
                 st.metric("Usage Drop %", f"{customer_row['usage_drop_pct'].values[0]*100:.1f}%")
@@ -474,7 +474,7 @@ elif app_mode == "🔍 Database Explorer":
         col_pred1, col_pred2 = st.columns([1, 1])
         
         with col_pred1:
-            st.markdown("### 🧭 Risk Score Dial")
+            st.markdown("### Risk Score Dial")
             
             # Speedometer Gauge
             gauge_fig = go.Figure(go.Indicator(
@@ -522,8 +522,8 @@ elif app_mode == "🔍 Database Explorer":
 
 
 # ----------------- MODE: BATCH PREDICTION & RISK EXPLORER -----------------
-elif app_mode == "📂 Batch Prediction & Risk Explorer":
-    st.subheader("📂 Customer Segment Batch Prediction & Risk Explainer")
+elif app_mode == "Batch Prediction & Risk Explorer":
+    st.subheader("Customer Segment Batch Prediction & Risk Explainer")
     st.markdown("Upload a CSV dataset of subscribers to identify high-risk individuals, understand churn reasons, and analyze segment-level risk distribution.")
 
     # Generate and offer sample template CSV
@@ -537,7 +537,7 @@ elif app_mode == "📂 Batch Prediction & Risk Explorer":
     col_dl, col_info = st.columns([1, 2])
     with col_dl:
         st.download_button(
-            label="📥 Download Sample CSV Template",
+            label="Download Sample CSV Template",
             data=sample_csv_data,
             file_name="nepal_telecom_churn_template.csv",
             mime="text/csv",
