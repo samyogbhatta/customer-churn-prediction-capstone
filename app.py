@@ -109,7 +109,7 @@ st.sidebar.title("Dashboard Controls")
 # Mode Selection
 app_mode = st.sidebar.radio(
     "Select Interface Mode",
-    ["📊 Executive Overview", "🔍 Database Explorer", "🧪 What-If Simulator"]
+    ["Executive Overview", "🔍 Database Explorer", "🧪 What-If Simulator"]
 )
 
 # Sidebar Filters (Apply to Executive Overview and Database Explorer)
@@ -257,7 +257,7 @@ if app_mode == "📊 Executive Overview":
         st.plotly_chart(fig_comp, use_container_width=True)
 
     # Global SHAP feature importance
-    st.subheader("🧠 Global Explanations (AI-Driven Feature Importance)")
+    st.subheader("Global Explanations (AI-Driven Feature Importance)")
     st.markdown("This chart displays the average absolute impact each feature has on the overall model predictions.")
     
     # Compute global importance on a random sample of 200 customers (to keep it fast)
@@ -312,7 +312,7 @@ elif app_mode == "🔍 Database Explorer":
         col_detail1, col_detail2 = st.columns([1, 2])
         
         with col_detail1:
-            st.markdown("### 📋 Demographic Profile")
+            st.markdown("### Demographic Profile")
             st.markdown(f"**Customer ID:** `{selected_cust_id}`")
             st.markdown(f"**Age:** {customer_row['age'].values[0]}")
             st.markdown(f"**Gender:** {customer_row['gender'].values[0]}")
@@ -328,7 +328,7 @@ elif app_mode == "🔍 Database Explorer":
             st.write("Roaming: ", "✅ Yes" if customer_row["roaming_active"].values[0] == 1 else "❌ No")
 
         with col_detail2:
-            st.markdown("### 📊 Usage & Service Quality Metrics")
+            st.markdown("### Usage & Service Quality Metrics")
             metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
             with metric_col_1:
                 st.metric("Calls Last 30 Days", f"{customer_row['calls_min_30d'].values[0]:.1f} Min")
@@ -412,8 +412,8 @@ elif app_mode == "🔍 Database Explorer":
 
 
 # ----------------- MODE 3: WHAT-IF SIMULATOR -----------------
-elif app_mode == "🧪 What-If Simulator":
-    st.subheader("🧪 Customer Scenario Simulator (What-If Analysis)")
+elif app_mode == "What-If Simulator":
+    st.subheader("Customer Scenario Simulator (What-If Analysis)")
     st.markdown("Manually input subscriber details below to calculate real-time churn risk and see customized SHAP feature contributions.")
     
     col_sim_in1, col_sim_in2, col_sim_in3 = st.columns(3)
@@ -427,7 +427,7 @@ elif app_mode == "🧪 What-If Simulator":
         sim_sim = st.selectbox("SIM Type ", ["Prepaid", "Postpaid"])
         sim_tenure = st.slider("Tenure (Days)", 15, 1800, 365)
 
-        st.markdown("#### 📦 Active Services")
+        st.markdown("#### Active Services")
         sim_data_pack = st.checkbox("Data Pack Active", value=True)
         sim_voice_pack = st.checkbox("Voice Pack Active", value=False)
         sim_vas = st.checkbox("VAS (Value Added) Active", value=False)
@@ -440,22 +440,22 @@ elif app_mode == "🧪 What-If Simulator":
         sim_data = st.slider("Data Last 30d (GB)", 0.0, 150.0, 10.0)
         sim_night = st.slider("Night Usage %", 0.0, 100.0, 20.0)
         
-        st.markdown("#### 💳 Recharges")
+        st.markdown("#### Recharges")
         sim_last_rech = st.slider("Last Recharge (Days Ago)", 0, 90, 8)
         sim_avg_rech = st.slider("Avg Recharge NPR", 20.0, 2000.0, 250.0)
         sim_rech_count = st.slider("Recharge Count 30d", 0, 20, 3)
 
     with col_sim_in3:
-        st.markdown("#### 🌐 Network Quality")
+        st.markdown("#### Network Quality")
         sim_signal = st.slider("Signal Strength (dBm)", -115, -50, -85)
         sim_drop = st.slider("Call Drop Rate (%)", 0.0, 25.0, 1.2) / 100.0
         sim_speed = st.slider("Avg Data Speed (Mbps)", 0.1, 120.0, 18.0)
         
-        st.markdown("#### 💬 Complaints")
+        st.markdown("#### Complaints")
         sim_complaints = st.slider("Complaints Last 30d", 0, 10, 0)
         sim_resol = st.slider("Avg Resolution Time (Hrs)", 0.0, 120.0, 0.0)
         
-        st.markdown("#### 📈 Account Trends")
+        st.markdown("#### Account Trends")
         sim_usage_drop = st.slider("Usage Drop Last Month (%)", -50.0, 100.0, 5.0) / 100.0
         sim_rech_drop = st.slider("Recharge Drop Last Month (%)", -50.0, 100.0, 0.0) / 100.0
         sim_inactive = st.slider("Inactive Days Last 30d", 0, 30, 2)
@@ -501,7 +501,7 @@ elif app_mode == "🧪 What-If Simulator":
     col_sim_res1, col_sim_res2 = st.columns([1, 1])
     
     with col_sim_res1:
-        st.markdown("### 🧭 Simulated Risk Score Dial")
+        st.markdown("### Simulated Risk Score Dial")
         
         # Speedometer Gauge
         gauge_fig = go.Figure(go.Indicator(
@@ -538,7 +538,7 @@ elif app_mode == "🧪 What-If Simulator":
             st.success("🟢 **LOW CHURN RISK (SIMULATED)**: Healthy profile. Low churn probability.")
 
     with col_sim_res2:
-        st.markdown("### 🧠 Explainable AI: SHAP Contributions")
+        st.markdown("### Explainable AI: SHAP Contributions")
         st.markdown("Features pushing simulated risk **UP** are in Red 🔴; features holding it **DOWN** are in Green 🟢.")
         local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
         st.plotly_chart(local_shap_fig, use_container_width=True)
