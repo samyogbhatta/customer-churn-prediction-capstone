@@ -215,11 +215,11 @@ st.sidebar.title("Dashboard Controls")
 # Mode Selection
 app_mode = st.sidebar.radio(
     "Select Interface Mode",
-    ["Executive Overview", "Database Explorer", " What-If Simulator"]
+    ["Executive Overview", "Database Explorer", "Batch Prediction & Risk Explorer", "What-If Simulator"]
 )
 
 # Sidebar Filters (Apply to Executive Overview and Database Explorer)
-if app_mode in ["Executive Overview", "🔍 Database Explorer"]:
+if app_mode in ["Executive Overview", "Database Explorer"]:
     st.sidebar.subheader("Filter Data")
     genders = ["All"] + list(df_raw["gender"].unique())
     gender_filter = st.sidebar.selectbox("Gender", genders)
@@ -291,7 +291,7 @@ if app_mode != "Batch Prediction & Risk Explorer":
     st.markdown("<hr>", unsafe_allow_html=True)
 
 # ----------------- MODE 1: EXECUTIVE OVERVIEW -----------------
-if app_mode == "Eecutive Overview":
+if app_mode == "Executive Overview":
     st.subheader("Executive Overview & Demographic Insights")
     
     col1, col2 = st.columns(2)
@@ -404,7 +404,7 @@ if app_mode == "Eecutive Overview":
 
 
 # ----------------- MODE 2: DATABASE EXPLORER -----------------
-elif app_mode == "🔍 Database Explorer":
+elif app_mode == "Database Explorer":
     st.subheader("🔍 Individual Customer Profiler & Prediction Explainer")
     
     if len(filtered_df) == 0:
