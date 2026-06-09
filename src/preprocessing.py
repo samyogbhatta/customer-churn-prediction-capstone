@@ -14,7 +14,11 @@ NUMERICAL_COLS = [
     "night_usage_pct", "last_recharge_days_ago", "avg_recharge_amount_npr", 
     "recharge_count_30d", "signal_strength_dbm", "call_drop_rate", 
     "avg_data_speed_mbps", "num_complaints_30d", "avg_resolution_time_hours", 
-    "usage_drop_pct", "recharge_drop_pct", "inactive_days"
+    "usage_drop_pct", "recharge_drop_pct", "inactive_days",
+    # Engineered Features
+    "calls_per_day", "data_gb_per_day", "recharges_per_day",
+    "avg_recharge_per_transaction", "complaint_density", "call_drop_severity",
+    "total_active_packs", "churn_risk_interaction"
 ]
 
 CATEGORICAL_COLS = [
@@ -30,6 +34,35 @@ def load_data(file_path):
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Dataset file not found at {file_path}")
     return pd.read_csv(file_path)
+
+def engineer_features(df):
+    """Generates interaction and derived features to capture non-linear relationships."""
+    df_out = df.copy()
+    
+    # 1. Usage intensity
+    df_out["calls_per_day"] = df_out["calls_min_30d"] / 30.0
+    df_out["data_gb_per_day"] = df_out["data_gb_30d"] / 30.0
+    df_out["recharges_per_day"] = df_out["recharge_count_30d"] / 30.0
+    
+    # 2. Recharge efficiency
+    df_out["avg_recharge_per_transaction"] = df_out["avg_recharge_amount_npr"] / (df_out["recharge_count_30d"] + 1.0)
+    
+    # 3. Quality / complaint density
+    df_out["complaint_density"] = df_out["num_complaints_30d"] * df_out["avg_resolution_time_hours"]
+    df_out["call_drop_severity"] = df_out["call_drop_rate"] * df_out["num_complaints_30d"]
+    
+    # 4. Total services active
+    df_out["total_active_packs"] = (
+        df_out["data_pack_active"] + 
+        df_out["voice_pack_active"] + 
+        df_out["vas_active"] + 
+        df_out["roaming_active"]
+    ).astype(float)
+    
+    # 5. Combined risk interaction
+    df_out["churn_risk_interaction"] = df_out["usage_drop_pct"] * df_out["recharge_drop_pct"] * df_out["inactive_days"]
+    
+    return df_out
 
 def create_preprocessing_pipeline():
     """Creates a ColumnTransformer pipeline for feature scaling and encoding."""
@@ -69,6 +102,9 @@ def preprocess_and_save(file_path, models_dir="models", test_size=0.2, random_st
     
     # Load dataset
     df = load_data(file_path)
+    
+    # Run feature engineering on the raw dataframe
+    df = engineer_features(df)
     
     # Split into features (X) and target (y)
     X = df.drop(columns=["churn"])

@@ -7,9 +7,11 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, 
     roc_auc_score, confusion_matrix, classification_report
 )
+from sklearn.model_selection import RandomizedSearchCV
+from imblearn.combine import SMOTETomek
 import joblib
 
-# Import preprocessing steps
+# Import preprocessing stepss
 from preprocessing import preprocess_and_save
 
 def train_model(data_path, models_dir="models", random_state=42):
@@ -22,26 +24,49 @@ def train_model(data_path, models_dir="models", random_state=42):
     )
     
     print("\nStep 2: Training XGBoost Classifier...")
-    # Calculate scale_pos_weight to handle potential class imbalance (negative count / positive count)
-    neg_count = (y_train == 0).sum()
-    pos_count = (y_train == 1).sum()
-    scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
+    # Apply SMOTETomek to balance training classes
+    print("Applying SMOTETomek to balance training classes...")
+    smote_tomek = SMOTETomek(random_state=random_state)
+    X_train_res, y_train_res = smote_tomek.fit_resample(X_train, y_train)
+    print(f"Resampled training set shape: {X_train_res.shape} (original: {X_train.shape})")
     
-    # Tuned hyperparameters for robust performance and reducing overfitting
-    model = XGBClassifier(
-        n_estimators=300,
-        max_depth=5,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        scale_pos_weight=scale_pos_weight,
+    # Run hyperparameter search to control overfitting and optimize performance
+    print("Optimizing hyperparameters with RandomizedSearchCV...")
+    base_model = XGBClassifier(
         random_state=random_state,
-        eval_metric="logloss",
-        use_label_encoder=False
+        eval_metric="logloss"
     )
     
-    # Fit the model
-    model.fit(X_train, y_train)
+    # Define hyperparameter grid for robust tuning
+    param_dist = {
+        'n_estimators': [100, 200, 300],
+        'max_depth': [3, 4, 5, 6],
+        'learning_rate': [0.01, 0.05, 0.1],
+        'subsample': [0.7, 0.8, 0.9],
+        'colsample_bytree': [0.7, 0.8, 0.9],
+        'min_child_weight': [1, 3, 5],
+        'gamma': [0.0, 0.1, 0.2],
+        'reg_alpha': [0.0, 0.1, 1.0],      # L1 regularization
+        'reg_lambda': [1.0, 5.0, 10.0]     # L2 regularization
+    }
+    
+    # Perform 3-fold cross validation search with 20 iterations
+    search = RandomizedSearchCV(
+        estimator=base_model,
+        param_distributions=param_dist,
+        n_iter=20,
+        scoring='roc_auc',
+        cv=3,
+        random_state=random_state,
+        n_jobs=1,
+        verbose=1
+    )
+    
+    search.fit(X_train_res, y_train_res)
+    model = search.best_estimator_
+    
+    print(f"Best hyperparameters found: {search.best_params_}")
+    print(f"Best cross-validation ROC-AUC score: {search.best_score_:.4f}")
     
     print("\nStep 3: Evaluating Model Performance...")
     # Predictions

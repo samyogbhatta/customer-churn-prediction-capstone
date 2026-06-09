@@ -6,6 +6,11 @@ from xgboost import XGBClassifier
 import plotly.graph_objects as go
 import joblib
 
+try:
+    from preprocessing import engineer_features
+except ImportError:
+    from src.preprocessing import engineer_features
+
 class ChurnExplainer:
     def __init__(self, model_path="models/xgboost_churn_model.json", preprocessor_path="models/preprocessor.joblib"):
         """Initializes the SHAP Explainer with the trained XGBoost model and preprocessor."""
@@ -37,7 +42,8 @@ class ChurnExplainer:
 
     def get_preprocessed_df(self, raw_df):
         """Converts raw customer DataFrame into preprocessed DataFrame with feature names."""
-        processed_arr = self.preprocessor.transform(raw_df)
+        engineered_df = engineer_features(raw_df)
+        processed_arr = self.preprocessor.transform(engineered_df)
         return pd.DataFrame(processed_arr, columns=self.feature_names, index=raw_df.index)
 
     def explain_instance(self, raw_customer_row):
@@ -46,6 +52,9 @@ class ChurnExplainer:
         Returns:
             dict containing base value, prediction probability, SHAP values, and feature contributions.
         """
+        # Engineer features to get the unscaled values
+        engineered_row = engineer_features(raw_customer_row)
+        
         # Transform the single row
         X_processed = self.get_preprocessed_df(raw_customer_row)
         
@@ -82,8 +91,8 @@ class ChurnExplainer:
             if "_" in feature and any(c in feature for c in ["gender_", "province_", "district_type_", "sim_type_"]):
                 orig_values[feature] = X_processed[feature].values[0]
             else:
-                if feature in raw_customer_row.columns:
-                    orig_values[feature] = raw_customer_row[feature].values[0]
+                if feature in engineered_row.columns:
+                    orig_values[feature] = engineered_row[feature].values[0]
                 else:
                     orig_values[feature] = X_processed[feature].values[0]
                     

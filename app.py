@@ -554,8 +554,13 @@ elif app_mode == "Batch Prediction & Risk Explorer":
             uploaded_df = pd.read_csv(uploaded_file)
             st.success(f"✅ Successfully loaded dataset with **{len(uploaded_df)}** customer records.")
             
-            # Validate required columns
-            required_features = NUMERICAL_COLS + CATEGORICAL_COLS + BINARY_COLS
+            # Validate required columns (excluding features that will be engineered)
+            engineered_features = [
+                "calls_per_day", "data_gb_per_day", "recharges_per_day",
+                "avg_recharge_per_transaction", "complaint_density", "call_drop_severity",
+                "total_active_packs", "churn_risk_interaction"
+            ]
+            required_features = [col for col in (NUMERICAL_COLS + CATEGORICAL_COLS + BINARY_COLS) if col not in engineered_features]
             missing_features = [col for col in required_features if col not in uploaded_df.columns]
             
             if missing_features:

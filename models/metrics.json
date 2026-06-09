@@ -1,14 +1,14 @@
 {
-    "accuracy": 0.781,
-    "precision": 0.5597269624573379,
-    "recall": 0.6456692913385826,
-    "f1_score": 0.5996343692870201,
-    "roc_auc": 0.8170452386481181,
+    "accuracy": 0.797,
+    "precision": 0.6197183098591549,
+    "recall": 0.5196850393700787,
+    "f1_score": 0.5653104925053534,
+    "roc_auc": 0.8141478963923077,
     "confusion_matrix": {
-        "tn": 617,
-        "fp": 129,
-        "fn": 90,
-        "tp": 164
+        "tn": 665,
+        "fp": 81,
+        "fn": 122,
+        "tp": 132
     },
     "feature_names": [
         "age",
@@ -28,6 +28,14 @@
         "usage_drop_pct",
         "recharge_drop_pct",
         "inactive_days",
+        "calls_per_day",
+        "data_gb_per_day",
+        "recharges_per_day",
+        "avg_recharge_per_transaction",
+        "complaint_density",
+        "call_drop_severity",
+        "total_active_packs",
+        "churn_risk_interaction",
         "gender_Female",
         "gender_Male",
         "gender_Other",
