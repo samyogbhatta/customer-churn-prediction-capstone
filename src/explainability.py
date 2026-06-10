@@ -261,3 +261,38 @@ if __name__ == "__main__":
         
     except Exception as e:
         print(f"Error testing explainer: {e}")
+    # Existing code up to line 264 remains unchanged
+
+# ---------------------------------------------------------------------------
+# Additional SHAP plotting utilities required by the Streamlit app
+# ---------------------------------------------------------------------------
+import matplotlib.pyplot as plt
+from plotly.tools import mpl_to_plotly
+
+def plot_summary(shap_values, X_processed, max_display=20):
+    """Generates a SHAP summary (beeswarm) plot and returns a Plotly Figure.
+    """
+    shap.summary_plot(shap_values, X_processed, max_display=max_display, show=False)
+    fig = plt.gcf()
+    return mpl_to_plotly(fig)
+
+def plot_mean_bar(shap_values, X_processed, max_display=20):
+    """Generates a SHAP mean absolute bar plot and returns a Plotly Figure.
+    """
+    shap.summary_plot(shap_values, X_processed, max_display=max_display, plot_type="bar", show=False)
+    fig = plt.gcf()
+    return mpl_to_plotly(fig)
+
+def plot_dependence(feature_name, shap_values, X_processed, interaction_index=None):
+    """Generates a SHAP dependence plot for a given feature.
+    """
+    shap.dependence_plot(feature_name, shap_values, X_processed, interaction_index=interaction_index, show=False)
+    fig = plt.gcf()
+    return mpl_to_plotly(fig)
+
+def plot_waterfall(shap_values_instance, X_processed_instance, max_display=10):
+    """Generates a SHAP waterfall plot for a single instance.
+    """
+    shap.waterfall_plot(shap_values_instance, max_display=max_display, show=False)
+    fig = plt.gcf()
+    return mpl_to_plotly(fig)
