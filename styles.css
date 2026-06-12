@@ -1,0 +1,104 @@
+/* Nepali‑Vibe Premium Theme */
+:root {
+  /* Core palette */
+  --primary-red: #D32F2F;      /* Nepal flag red */
+  --secondary-blue: #1976D2;   /* Sky blue */
+  --accent-gold: #FBC02D;     /* Traditional gold */
+  --accent-green: #4CAF50;    /* Forest green */
+  --bg-dark: #0A0A0A;        /* Deep night background */
+  --bg-card: rgba(255, 255, 255, 0.08);
+  --glass-blur: blur(12px);
+  --radius: 12px;
+  --transition: all 0.3s ease;
+}
+
+/* Global Streamlit overrides */
+html, body {
+  background: linear-gradient(135deg, var(--bg-dark), #1a1a1a) !important;
+  color: #f8fafc;
+  font-family: 'Noto Sans Devanagari', 'Inter', sans-serif;
+}
+
+.stButton > button {
+  background: var(--primary-red);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  transition: var(--transition);
+}
+.stButton > button:hover {
+  background: #b71c1c;
+  box-shadow: 0 4px 12px rgba(211,47,47,0.4);
+}
+
+/* Metric cards used in KPI section */
+.metric-card {
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  text-align: center;
+  transition: var(--transition);
+  margin: 0.5rem;
+}
+.metric-card:hover {
+  background: rgba(255,255,255,0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.metric-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent-gold);
+}
+.metric-label {
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+  background-color: #1f2937 !important;
+  color: #f8fafc;
+}
+[data-testid="stSidebar"] .css-1d391kg {
+  font-weight: 600;
+  color: var(--accent-gold);
+}
+
+/* Nav menu overrides – using existing option_menu styles */
+[role="navigation"] .nav-link {
+  color: #94a3b8;
+  font-weight: 500;
+}
+[role="navigation"] .nav-link-selected {
+  background-color: var(--primary-red) !important;
+  color: #fff !important;
+  box-shadow: 0 0 12px rgba(211,47,47,0.4);
+}
+
+/* Hover effects for charts containers */
+.plotly-graph-div:hover {
+  opacity: 0.95;
+  transition: var(--transition);
+}
+
+/* Download button styling */
+[data-testid="stDownloadButton"] button {
+  background: var(--secondary-blue);
+  color: #fff;
+  border-radius: var(--radius);
+  border: none;
+  padding: 0.4rem 0.8rem;
+}
+[data-testid="stDownloadButton"] button:hover { background: #115293; }
+
+/* Fine‑tune Streamlit elements */
+.stMetric {
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  border-radius: var(--radius);
+  padding: 0.6rem;
+}

@@ -267,32 +267,35 @@ if __name__ == "__main__":
 # Additional SHAP plotting utilities required by the Streamlit app
 # ---------------------------------------------------------------------------
 import matplotlib.pyplot as plt
-from plotly.tools import mpl_to_plotly
 
 def plot_summary(shap_values, X_processed, max_display=20):
-    """Generates a SHAP summary (beeswarm) plot and returns a Plotly Figure.
+    """Generates a SHAP summary (beeswarm) plot and returns a Matplotlib Figure.
     """
+    fig = plt.figure(figsize=(10, 6))
     shap.summary_plot(shap_values, X_processed, max_display=max_display, show=False)
-    fig = plt.gcf()
-    return mpl_to_plotly(fig)
+    plt.tight_layout()
+    return fig
 
 def plot_mean_bar(shap_values, X_processed, max_display=20):
-    """Generates a SHAP mean absolute bar plot and returns a Plotly Figure.
+    """Generates a SHAP mean absolute bar plot and returns a Matplotlib Figure.
     """
+    fig = plt.figure(figsize=(10, 6))
     shap.summary_plot(shap_values, X_processed, max_display=max_display, plot_type="bar", show=False)
-    fig = plt.gcf()
-    return mpl_to_plotly(fig)
+    plt.tight_layout()
+    return fig
 
 def plot_dependence(feature_name, shap_values, X_processed, interaction_index=None):
     """Generates a SHAP dependence plot for a given feature.
     """
+    fig = plt.figure(figsize=(10, 6))
     shap.dependence_plot(feature_name, shap_values, X_processed, interaction_index=interaction_index, show=False)
-    fig = plt.gcf()
-    return mpl_to_plotly(fig)
+    plt.tight_layout()
+    return fig
 
-def plot_waterfall(shap_values_instance, X_processed_instance, max_display=10):
+def plot_waterfall(shap_values_instance, X_processed_instance=None, max_display=10):
     """Generates a SHAP waterfall plot for a single instance.
     """
+    fig = plt.figure(figsize=(10, 6))
     shap.waterfall_plot(shap_values_instance, max_display=max_display, show=False)
-    fig = plt.gcf()
-    return mpl_to_plotly(fig)
+    plt.tight_layout()
+    return fig

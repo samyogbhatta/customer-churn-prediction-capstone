@@ -5,8 +5,8 @@ def render_navigation():
     """Render the top navigation menu and return the selected mode string."""
     app_mode = option_menu(
         menu_title=None,
-        options=["Executive Overview", "Database Explorer", "Batch Prediction & Risk Explorer", "What-If Simulator"],
-        icons=["bar-chart-line-fill", "search", "exclamation-triangle", "brain"],
+        options=["Uploaded Data Overview", "Database Explorer", "What-If Simulator"],
+        icons=["upload", "search", "brain"],
         default_index=0,
         orientation="horizontal",
         styles={

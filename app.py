@@ -1,9 +1,23 @@
+import os
+import sys
+import platform
+import collections
+
+# Set thread limits for OpenBLAS, MKL, OMP to prevent hangs on Windows
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
+# Mock platform.uname and platform.machine to bypass slow/hanging system queries on Windows
+UName = collections.namedtuple('uname_result', ['system', 'node', 'release', 'version', 'machine', 'processor'])
+platform.uname = lambda: UName('Windows', 'node', '10', '10.0', 'AMD64', 'Intel')
+platform.machine = lambda: 'AMD64'
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
-import os
 import json
 import joblib
 # pyrefly: ignore [missing-import]
@@ -17,6 +31,8 @@ from streamlit_option_menu import option_menu
 from src.explainability import ChurnExplainer, plot_dependence, plot_local_shap, plot_mean_bar, plot_summary, plot_waterfall
 from src.preprocessing import NUMERICAL_COLS, CATEGORICAL_COLS, BINARY_COLS
 from src.components.navigation import render_navigation
+from src.components.report_generator import generate_report_pdf
+from src.utils.excel_export import export_excel
 import src.components.style as style
 
 # Page Config
@@ -28,6 +44,9 @@ st.set_page_config(
 
 # Custom Premium CSS Styling (Dark Slate Aesthetic)
 st.markdown(style.get_css(), unsafe_allow_html=True)
+# Load custom Nepali-themed stylesheet
+with open('styles.css', 'r', encoding='utf-8') as css_file:
+    st.markdown(f"<style>{css_file.read()}</style>", unsafe_allow_html=True)
 
 # Helper functions for cached loading
 @st.cache_data
@@ -155,35 +174,144 @@ def compute_uploaded_global_shap(uploaded_df_raw, _explainer_instance):
     shap_vals, importance_df = _explainer_instance.get_global_explanations(X_sample)
     return shap_vals, importance_df, X_sample, len(X_sample)
 
-# Load data and assets
-DATA_PATH = "data/telecom_churn_nepal.csv"
-df_raw = load_dataset(DATA_PATH)
+# Load models and explainer
 explainer = load_explainer()
 metrics_data = load_model_metrics()
 
-# Check if data and models are initialized
-if df_raw is None or explainer is None or metrics_data is None:
+# Check if models are initialized
+if explainer is None or metrics_data is None:
     st.warning("ML Pipeline needs to be executed before running the dashboard.")
     st.info("Please run the data generator and training pipeline in your terminal first:")
     st.code("python src/data_generator.py\npython src/train.py", language="bash")
     st.stop()
 
+# Define raw required features (before feature engineering)
+REQUIRED_RAW_FEATURES = [
+    "age", "gender", "province", "district_type", "sim_type", "tenure_days",
+    "calls_min_30d", "sms_count_30d", "data_gb_30d", "night_usage_pct",
+    "last_recharge_days_ago", "avg_recharge_amount_npr", "recharge_count_30d",
+    "signal_strength_dbm", "call_drop_rate", "avg_data_speed_mbps",
+    "num_complaints_30d", "avg_resolution_time_hours",
+    "data_pack_active", "voice_pack_active", "vas_active", "roaming_active",
+    "usage_drop_pct", "recharge_drop_pct", "inactive_days"
+]
+
+def process_and_store_uploaded_data(uploaded_df_raw, filename):
+    missing_cols = [col for col in REQUIRED_RAW_FEATURES if col not in uploaded_df_raw.columns]
+    if missing_cols:
+        return missing_cols
+        
+    uploaded_df = uploaded_df_raw.copy()
+    
+    # Auto-generate customer_id if missing
+    if "customer_id" not in uploaded_df.columns:
+        uploaded_df["customer_id"] = [f"NP-CUST-{i+1:05d}" for i in range(len(uploaded_df))]
+        
+    # Get probabilities from model
+    X_input = uploaded_df[REQUIRED_RAW_FEATURES] # ensure we pass only standard columns
+    X_processed = explainer.get_preprocessed_df(X_input)
+    probs = explainer.model.predict_proba(X_processed)[:, 1]
+    
+    uploaded_df["churn_probability"] = probs
+    uploaded_df["Risk Score (%)"] = (probs * 100).round(1)
+    uploaded_df["Risk Level"] = np.where(probs >= 0.7, "🔴 Critical", np.where(probs >= 0.3, "⚠️ Elevated", "🟢 Low"))
+    
+    # Fallback for churn label
+    if "churn" not in uploaded_df.columns or uploaded_df["churn"].isna().all():
+        uploaded_df["churn"] = (probs >= 0.5).astype(int)
+    else:
+        # Fill missing churn entries if any
+        uploaded_df["churn"] = uploaded_df["churn"].fillna(0).astype(int)
+        
+    st.session_state.uploaded_df = uploaded_df
+    st.session_state.uploaded_filename = filename
+    return None
+
 # Header Section
-st.title("🇳🇵 Nepalese Telecom Churn Analytics & Explainable AI")
+st.title("📊 Nepal Telecom Churn Dashboard")
 st.markdown("Developed Automated Customer Churn Prediction System Using Machine Learning and Explainable AI (SHAP)")
 
+# Welcome / File Upload Screen if no data has been uploaded yet
+if "uploaded_df" not in st.session_state:
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.subheader("📤 Get Started: Upload Your Dataset")
+    st.markdown("Welcome! Upload your data or use the demo to explore churn predictions.")
+    
+    col_upload, col_template = st.columns([2, 1])
+    
+    with col_template:
+        st.markdown("### 📋 Required Columns")
+        st.markdown("- Required columns: age, gender, province, district, SIM type, tenure, calls, SMS, data, signal, drop rate, speed, complaints, recharge info, service flags, trends. Optional: customer_id, churn")
+        st.code("""
+- Demographic: age, gender, province, district_type
+- SIM info: sim_type, tenure_days
+- Usage info: calls_min_30d, sms_count_30d, data_gb_30d
+- Network info: signal_strength_dbm, call_drop_rate, avg_data_speed_mbps
+- Recharges: avg_recharge_amount_npr, recharge_count_30d, last_recharge_days_ago
+- Active Services: data_pack_active, voice_pack_active, vas_active, roaming_active
+- Customer Experience: num_complaints_30d, avg_resolution_time_hours
+- Trends: usage_drop_pct, recharge_drop_pct, inactive_days
+- (Optional): customer_id, churn
+        """, language="text")
+        
+        # Load sample data if exists for downloading template
+        DATA_PATH = "data/telecom_churn_nepal.csv"
+        df_demo = load_dataset(DATA_PATH)
+        if df_demo is not None:
+            sample_df = df_demo.copy()
+            if "churn" in sample_df.columns:
+                sample_df = sample_df.drop(columns=["churn"])
+            sample_csv_data = sample_df.head(10).to_csv(index=False)
+            st.download_button(
+                label="📥 Download CSV Template",
+                data=sample_csv_data,
+                file_name="nepal_telecom_churn_template.csv",
+                mime="text/csv",
+                help="Download a pre-formatted CSV template with standard column headers."
+            )
+            
+            st.markdown("---")
+            if st.button("🚀 Load Demo Dataset", help="Quickly explore the dashboard using pre-generated Nepali subscriber data."):
+                errors = process_and_store_uploaded_data(df_demo, "telecom_churn_nepal_demo.csv")
+                if errors:
+                    st.error(f"Demo dataset is missing columns: {errors}")
+                else:
+                    st.success("Demo data loaded!")
+                    st.rerun()
+        else:
+            st.info("Run `python src/data_generator.py` to generate the demo dataset.")
+            
+    with col_upload:
+        st.markdown("### 📤 Drag and Drop CSV")
+        uploaded_file = st.file_uploader("Upload CSV file containing subscriber records", type=["csv"])
+        if uploaded_file is not None:
+            try:
+                uploaded_df_raw = pd.read_csv(uploaded_file)
+                errors = process_and_store_uploaded_data(uploaded_df_raw, uploaded_file.name)
+                if errors:
+                    st.error("Missing required columns:")
+                    st.write(errors)
+                    st.warning("Please download and use the template CSV from the side column.")
+                else:
+                    st.success(f"Processed {len(uploaded_df_raw)} records.")
+                    st.rerun()
+            except Exception as e:
+                temp_msg = f"Failed to process CSV: {e}"
+        # Stop execution only if no data is loaded
+        if "uploaded_df" not in st.session_state:
+            st.stop()
+
 # ----------------- COATED CAPSULE INTERFACE NAVIGATION -----------------
-# Maps exactly to the styling, ordering, and icons requested in your image.
 app_mode = option_menu(
     menu_title=None,
-    options=["Executive Overview", "Database Explorer", "Batch Prediction & Risk Explorer", "What-If Simulator"],
-    icons=["bar-chart-line-fill", "search", "exclamation-triangle", "brain"],
+    options=["Overview", "Customer List", "Customer Details", "Simulator"],
+    icons=["bar-chart-line-fill", "table", "search", "cpu"],
     default_index=0,
     orientation="horizontal",
     styles={
         "container": {
             "padding": "12px 0px", 
-            "background-color": "#0f172a", # Dark background profile container
+            "background-color": "#0f172a", 
             "border-radius": "0px"
         },
         "icon": {
@@ -194,16 +322,16 @@ app_mode = option_menu(
             "font-size": "14px", 
             "text-align": "center", 
             "margin": "0px 15px", 
-            "color": "#94a3b8",             # Muted slate text color for unselected tabs
+            "color": "#94a3b8",             
             "font-weight": "500",
-            "border-radius": "50px",        # Capsule pill boundary base
+            "border-radius": "50px",        
             "--hover-color": "#1e293b"      
         },
         "nav-link-selected": {
-            "background-color": "#dc2626", # Custom vibrant corporate red background pill
-            "color": "#ffffff",             # Crisp white active text
+            "background-color": "#dc2626", 
+            "color": "#ffffff",             
             "font-weight": "600",
-            "border-radius": "50px",        # Smooth complete capsule rounding
+            "border-radius": "50px",        
             "box-shadow": "0px 0px 12px rgba(220, 38, 38, 0.4)" 
         }
     }
@@ -212,40 +340,46 @@ app_mode = option_menu(
 # Sidebar UI Setup
 st.sidebar.image("https://img.icons8.com/clouds/100/database.png", width=80)
 st.sidebar.title("Dashboard Controls")
+st.sidebar.markdown(f"**Dataset Loaded:**\n`{st.session_state.uploaded_filename}`")
+st.sidebar.markdown(f"**Subscribers:** {len(st.session_state.uploaded_df):,}")
 
-# Sidebar Filters (Apply to Executive Overview and Database Explorer)
-if app_mode in ["Executive Overview", "Database Explorer"]:
-    st.sidebar.subheader("Filter Data")
-    genders = ["All"] + list(df_raw["gender"].unique())
-    gender_filter = st.sidebar.selectbox("Gender", genders)
+if st.sidebar.button("🔄 Reset & Upload New Data"):
+    del st.session_state.uploaded_df
+    if "uploaded_filename" in st.session_state:
+        del st.session_state.uploaded_filename
+    st.rerun()
 
-    provinces = ["All"] + list(df_raw["province"].unique())
-    province_filter = st.sidebar.selectbox("Province", provinces)
+st.sidebar.subheader("Filter Data")
+genders = ["All"] + list(st.session_state.uploaded_df["gender"].unique())
+gender_filter = st.sidebar.selectbox("Gender", genders)
 
-    sim_types = ["All"] + list(df_raw["sim_type"].unique())
-    sim_filter = st.sidebar.selectbox("SIM Type", sim_types)
+provinces = ["All"] + list(st.session_state.uploaded_df["province"].unique())
+province_filter = st.sidebar.selectbox("Province", provinces)
 
-    # Filter Dataset
-    filtered_df = df_raw.copy()
-    if gender_filter != "All":
-        filtered_df = filtered_df[filtered_df["gender"] == gender_filter]
-    if province_filter != "All":
-        filtered_df = filtered_df[filtered_df["province"] == province_filter]
-    if sim_filter != "All":
-        filtered_df = filtered_df[filtered_df["sim_type"] == sim_filter]
-else:
-    filtered_df = df_raw.copy()
+sim_types = ["All"] + list(st.session_state.uploaded_df["sim_type"].unique())
+sim_filter = st.sidebar.selectbox("SIM Type", sim_types)
 
-# Compute and display KPIs only for non-batch modes
-if app_mode != "Batch Prediction & Risk Explorer":
+# Filter Dataset
+filtered_df = st.session_state.uploaded_df.copy()
+if gender_filter != "All":
+    filtered_df = filtered_df[filtered_df["gender"] == gender_filter]
+if province_filter != "All":
+    filtered_df = filtered_df[filtered_df["province"] == province_filter]
+if sim_filter != "All":
+    filtered_df = filtered_df[filtered_df["sim_type"] == sim_filter]
+    at_risk_df = filtered_df[filtered_df["churn_probability"] >= 0.5].copy()
+
+    # Compute and display KPIs only for non-simulator modes
+    # overall_summary will be defined later after KPI calculations
+if app_mode != "Simulator":
     total_customers = len(filtered_df)
     overall_churn_rate = (filtered_df["churn"].mean() * 100) if total_customers > 0 else 0.0
     model_accuracy = metrics_data.get("accuracy", 0.85)
 
     # Calculate simulated Revenue at Risk
-    X_filtered_processed = explainer.get_preprocessed_df(filtered_df.drop(columns=["churn"]))
-    probs_filtered = explainer.model.predict_proba(X_filtered_processed)[:, 1]
-    high_risk_revenue = filtered_df.loc[probs_filtered > 0.5, "avg_recharge_amount_npr"].sum()
+    high_risk_revenue = 0.0
+    if total_customers > 0:
+        high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= 0.5, "avg_recharge_amount_npr"].sum()
 
     # Display KPI Section
     kpi_cols = st.columns(4)
@@ -262,7 +396,7 @@ if app_mode != "Batch Prediction & Risk Explorer":
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value">{overall_churn_rate:.1f}%</div>
-            <div class="metric-label">Observed Churn Rate</div>
+            <div class="metric-label">Churn Rate</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -282,198 +416,286 @@ if app_mode != "Batch Prediction & Risk Explorer":
         </div>
         """, unsafe_allow_html=True)
 
+        overall_summary = {
+            "total_customers": total_customers,
+            "overall_churn_rate": overall_churn_rate,
+            "model_accuracy": model_accuracy,
+            "high_risk_revenue": high_risk_revenue,
+        }
+
     st.markdown("<hr>", unsafe_allow_html=True)
 
-# ----------------- MODE 1: EXECUTIVE OVERVIEW -----------------
-if app_mode == "Executive Overview":
-    st.subheader("Executive Overview & Demographic Insights")
+
+# 📥 Download Report (PDF)
+if app_mode == "Overview":
+    st.subheader("Overview & Demographics")
     
-    col1, col2 = st.columns(2)
+    # 📊 Generate Executive Reports
+    st.subheader("📊 Generate Executive Reports")
+    st.markdown("Generate and download PDF/Excel summaries for the currently filtered customer segment.")
+
+    # Initialize session state for reports
+    if "pdf_report_bytes" not in st.session_state:
+        st.session_state.pdf_report_bytes = None
+    if "excel_report_bytes" not in st.session_state:
+        st.session_state.excel_report_bytes = None
+    if "report_filter_hash" not in st.session_state:
+        st.session_state.report_filter_hash = ""
+
+    # Generate a hash of the current filter status to detect when data changes
+    current_filter_hash = f"{len(filtered_df)}_{overall_churn_rate:.2f}_{high_risk_revenue:.2f}"
     
-    with col1:
-        # Churn by Province Chart
-        province_churn = filtered_df.groupby("province")["churn"].mean().reset_index()
-        province_churn["churn_pct"] = province_churn["churn"] * 100
-        province_churn = province_churn.sort_values(by="churn_pct", ascending=False)
+    # If the filter changes, reset the generated reports
+    if st.session_state.report_filter_hash != current_filter_hash:
+        st.session_state.pdf_report_bytes = None
+        st.session_state.excel_report_bytes = None
+        st.session_state.report_filter_hash = current_filter_hash
+
+    col_btn1, col_btn2 = st.columns(2)
+    
+    with col_btn1:
+        if st.button("⚙️ Generate Reports (PDF & Excel)", use_container_width=True):
+            with st.spinner("Generating reports..."):
+                # 1. Excel Report
+                excel_path = os.path.join("reports", "at_risk_customers.xlsx")
+                os.makedirs("reports", exist_ok=True)
+                at_risk_df = filtered_df[filtered_df["churn_probability"] >= 0.5].copy()
+                export_excel(at_risk_df, excel_path)
+                with open(excel_path, "rb") as f:
+                    st.session_state.excel_report_bytes = f.read()
+                
+                # 2. PDF Report
+                pdf_path = generate_report_pdf(overall_summary, at_risk_df, filtered_df)
+                with open(pdf_path, "rb") as f:
+                    st.session_state.pdf_report_bytes = f.read()
+                
+                st.success("Reports generated successfully!")
+
+    # Show download buttons if reports have been generated
+    if st.session_state.pdf_report_bytes is not None and st.session_state.excel_report_bytes is not None:
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button(
+                label="📥 Save PDF Executive Report",
+                data=st.session_state.pdf_report_bytes,
+                file_name="churn_report.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        with col_dl2:
+            st.download_button(
+                label="📥 Save Excel At-Risk List",
+                data=st.session_state.excel_report_bytes,
+                file_name="at_risk_customers.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+    
+    if len(filtered_df) == 0:
+        st.warning("No customers match the current filter selection.")
+    else:
+        col1, col2 = st.columns(2)
         
-        fig_prov = px.bar(
-            province_churn,
-            x="province",
-            y="churn_pct",
-            color="churn_pct",
-            color_continuous_scale="Reds",
-            title="Observed Churn Rate by Province (%)",
-            labels={"province": "Province", "churn_pct": "Churn Rate (%)"}
+        with col1:
+            # Churn by Province Chart
+            province_churn = filtered_df.groupby("province")["churn"].mean().reset_index()
+            province_churn["churn_pct"] = province_churn["churn"] * 100
+            province_churn = province_churn.sort_values(by="churn_pct", ascending=False)
+            
+            fig_prov = px.bar(
+                province_churn,
+                x="province",
+                y="churn_pct",
+                color="churn_pct",
+                color_continuous_scale="Reds",
+                title="Observed Churn Rate by Province (%)",
+                labels={"province": "Province", "churn_pct": "Churn Rate (%)"}
+            )
+            fig_prov.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_prov, use_container_width=True)
+
+        with col2:
+            # Numerical Correlation Heatmap
+            corr_cols = [
+                "tenure_days", "calls_min_30d", "data_gb_30d", "avg_recharge_amount_npr", 
+                "signal_strength_dbm", "call_drop_rate", "num_complaints_30d", 
+                "usage_drop_pct", "recharge_drop_pct", "inactive_days", "churn"
+            ]
+            corr_cols = [c for c in corr_cols if c in filtered_df.columns]
+            corr_matrix = filtered_df[corr_cols].corr()
+            corr_matrix.columns = [c.replace("_", " ").title() for c in corr_matrix.columns]
+            corr_matrix.index = [c.replace("_", " ").title() for c in corr_matrix.index]
+            
+            fig_corr = px.imshow(
+                corr_matrix,
+                text_auto=".2f",
+                color_continuous_scale="RdBu_r",
+                title="Correlation Matrix (Key Features & Churn)"
+            )
+            fig_corr.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=500)
+            st.plotly_chart(fig_corr, use_container_width=True)
+
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            # Distribution of Signal Strength vs Churn
+            fig_sig = px.histogram(
+                filtered_df,
+                x="signal_strength_dbm",
+                color=filtered_df["churn"].map({0: "Loyal", 1: "Churned"}),
+                barmode="overlay",
+                title="Signal Strength (dBm) Distribution by Churn",
+                color_discrete_map={"Loyal": "#2E7D32", "Churned": "#D32F2F"},
+                opacity=0.7
+            )
+            fig_sig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_sig, use_container_width=True)
+            
+        with col4:
+            # Complaints & Resolution vs Churn
+            has_complaints_df = filtered_df[filtered_df["num_complaints_30d"] > 0]
+            if len(has_complaints_df) > 0:
+                fig_comp = px.scatter(
+                    has_complaints_df,
+                    x="num_complaints_30d",
+                    y="avg_resolution_time_hours",
+                    color=has_complaints_df["churn"].map({0: "Loyal", 1: "Churned"}),
+                    title="Complaints Density vs Resolution Time (Hours)",
+                    labels={"num_complaints_30d": "Number of Complaints", "avg_resolution_time_hours": "Resolution Time (Hrs)"},
+                    color_discrete_map={"Loyal": "#2E7D32", "Churned": "#D32F2F"},
+                    opacity=0.6
+                )
+                fig_comp.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig_comp, use_container_width=True)
+            else:
+                st.info("No customer complaints registered in the selected segment to display.")
+
+        st.subheader("Global Explanations (AI-Driven Feature Importance)")
+        st.markdown("This chart displays the average absolute impact each feature has on the overall model predictions.")
+        
+        @st.cache_data
+        def compute_global_importance_filtered(_explainer, df_sample):       
+            X_sample_raw = df_sample.drop(columns=["churn", "customer_id", "churn_probability", "Risk Score (%)", "Risk Level"], errors="ignore")
+            X_sample_processed = _explainer.get_preprocessed_df(X_sample_raw)
+            shap_vals, importance_df = _explainer.get_global_explanations(X_sample_processed)
+            return shap_vals, importance_df, X_sample_processed
+
+        sample_size = min(300, len(filtered_df))
+        df_sample = filtered_df.sample(n=sample_size, random_state=42)
+        
+        with st.spinner("Calculating global feature contributions..."):
+            shap_vals, importance_df, X_sample_processed = compute_global_importance_filtered(explainer, df_sample)
+        
+        importance_df["Clean_Feature"] = importance_df["Feature"].apply(lambda x: x.replace("_", " ").title())
+        
+        # Plot 1: Top 15 Global Features
+        fig_glob = px.bar(
+            importance_df.head(15),
+            y="Clean_Feature",
+            x="Mean_Abs_SHAP",
+            orientation="h",    
+            title="Top 15 Global Predictive Features (Mean Absolute SHAP)",
+            color="Mean_Abs_SHAP",
+            color_continuous_scale="Blues"
         )
-        fig_prov.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_prov, use_container_width=True)
-
-    with col2:
-        # Numerical Correlation Heatmap
-        corr_cols = [
-            "tenure_days", "calls_min_30d", "data_gb_30d", "avg_recharge_amount_npr", 
-            "signal_strength_dbm", "call_drop_rate", "num_complaints_30d", 
-            "usage_drop_pct", "recharge_drop_pct", "inactive_days", "churn"
-        ]
-        corr_matrix = filtered_df[corr_cols].corr()
-        corr_matrix.columns = [c.replace("_", " ").title() for c in corr_matrix.columns]
-        corr_matrix.index = [c.replace("_", " ").title() for c in corr_matrix.index]
-        
-        fig_corr = px.imshow(
-            corr_matrix,
-            text_auto=".2f",
-            color_continuous_scale="RdBu_r",
-            title="Correlation Matrix (Key Features & Churn)"
+        fig_glob.update_layout(
+            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            yaxis=dict(autorange="reversed"), height=400
         )
-        fig_corr.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=500)
-        st.plotly_chart(fig_corr, use_container_width=True)
+        
+        # Plot 2: Beeswarm
+        fig_summary = plot_summary(shap_vals, X_sample_processed)
+        
+        # Plot 3: Mean SHAP Bar Chart
+        fig_bar = plot_mean_bar(shap_vals, X_sample_processed)
+        
+        # Plot 4: Feature Dependence Plot (Age)
+        fig_display = X_sample_processed.copy()
+        if "age" in df_sample.columns:
+            fig_display["age"] = df_sample.loc[fig_display.index, "age"]
+            fig_dependence = plot_dependence("age", shap_vals, fig_display) 
+        else:
+            fallback_feat = X_sample_processed.columns[0]
+            fig_dependence = plot_dependence(fallback_feat, shap_vals, fig_display)
 
-    col3, col4 = st.columns(2)
+        st.markdown("<hr>", unsafe_allow_html=True)
+        
+        # --- ROW 1 ---
+        col_row1_left, col_row1_right = st.columns(2)
+        
+        with col_row1_left:
+            st.subheader("Top 15 Global Features")
+            st.plotly_chart(fig_glob, use_container_width=True)
+            st.info("""
+**What this shows:** This chart shows which features most affect churn predictions. Longer bars mean the feature has a bigger impact.
+""")
+            
+        with col_row1_right:
+            st.subheader("Feature Distributions (Beeswarm)")
+            st.pyplot(fig_summary)
+            st.info("""
+            **What this shows:** Every dot represents a single customer sample. 
+            * **Position (X-Axis):** Dots on the right push risk UP (higher churn); dots on the left pull risk DOWN.
+            * **Color:** Red represents high values of that feature, blue represents low values.
+            """)
+            
+        # --- ROW 2 ---
+        st.markdown("<br>", unsafe_allow_html=True) 
+        col_row2_left, col_row2_right = st.columns(2)
+        
+        with col_row2_left:
+            st.subheader("Mean SHAP Importance")
+            st.pyplot(fig_bar)
+            st.info("""
+**What this shows:** How strong each feature is in influencing churn. Bigger values mean more impact.
+""")
+            
+        with col_row2_right:
+            st.subheader("Feature Dependence (Age)")
+            st.pyplot(fig_dependence)
+            st.info("""
+            **What this shows:** This highlights how the customer's exact age correlates to churn behavior. 
+            The Y-axis represents the SHAP risk impact. If you see the plot dip below 0 at certain ages, 
+            it indicates specific age bands that are mathematically more loyal to the network.
+            """)
+
+# ----------------- MODE 2: CUSTOMER REGISTRY -----------------
+elif app_mode == "Customer List":
+    st.subheader("📋 Customer List")
+    st.markdown("Search, filter, and review the risk profiles of all uploaded subscriber records.")
     
-    with col3:
-        # Distribution of Signal Strength vs Churn
-        fig_sig = px.histogram(
-            filtered_df,
-            x="signal_strength_dbm",
-            color=filtered_df["churn"].map({0: "Loyal", 1: "Churned"}),
-            barmode="overlay",
-            title="Signal Strength (dBm) Distribution by Churn",
-            color_discrete_map={"Loyal": "#2E7D32", "Churned": "#D32F2F"},
-            opacity=0.7
+    if len(filtered_df) == 0:
+        st.warning("No customers match the active filters.")
+    else:
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            risk_filter = st.multiselect(
+                "Filter by Risk Level",
+                options=["🔴 Critical", "⚠️ Elevated", "🟢 Low"],
+                default=["🔴 Critical", "⚠️ Elevated", "🟢 Low"]
+            )
+        with col_f2:
+            search_id = st.text_input("Search by Customer ID", "")
+        
+        display_df = filtered_df.copy()
+        display_df = display_df[display_df["Risk Level"].isin(risk_filter)]
+        if search_id:
+            display_df = display_df[display_df["customer_id"].astype(str).str.contains(search_id, case=False)]
+        
+        cols_to_show = ["customer_id", "Risk Level", "Risk Score (%)", "age", "gender", "province", 
+                        "tenure_days", "avg_recharge_amount_npr", "num_complaints_30d", "inactive_days"]
+        if "churn" in display_df.columns:
+            cols_to_show.append("churn")
+            
+        st.dataframe(
+            display_df[cols_to_show].sort_values(by="Risk Score (%)", ascending=False),
+            use_container_width=True,
+            hide_index=True
         )
-        fig_sig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_sig, use_container_width=True)
-        
-    with col4:
-        # Complaints & Resolution vs Churn
-        fig_comp = px.scatter(
-            filtered_df[filtered_df["num_complaints_30d"] > 0],
-            x="num_complaints_30d",
-            y="avg_resolution_time_hours",
-            color=filtered_df[filtered_df["num_complaints_30d"] > 0]["churn"].map({0: "Loyal", 1: "Churned"}),
-            title="Complaints Density vs Resolution Time (Hours)",
-            labels={"num_complaints_30d": "Number of Complaints", "avg_resolution_time_hours": "Resolution Time (Hrs)"},
-            color_discrete_map={"Loyal": "#2E7D32", "Churned": "#D32F2F"},
-            opacity=0.6
-        )
-        fig_comp.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_comp, use_container_width=True)
 
-    st.subheader("Global Explanations (AI-Driven Feature Importance)")
-    st.markdown("This chart displays the average absolute impact each feature has on the overall model predictions.")
-    
-    @st.cache_data
-    def compute_global_importance(_explainer, df_sample):       
-        X_sample_processed = _explainer.get_preprocessed_df(df_sample.drop(columns=["churn"]))
-        shap_vals, importance_df = _explainer.get_global_explanations(X_sample_processed)
-        return shap_vals, importance_df, X_sample_processed
-
-    sample_size = min(300, len(df_raw))
-    df_sample = df_raw.sample(n=sample_size, random_state=42)
-    shap_vals, importance_df, X_sample_processed = compute_global_importance(explainer, df_sample)
-    importance_df["Clean_Feature"] = importance_df["Feature"].apply(lambda x: x.replace("_", " ").title())
-    
-    fig_glob = px.bar(
-        importance_df.head(15),
-        y="Clean_Feature",
-        x="Mean_Abs_SHAP",
-        orientation="h",    
-        title="Top 15 Global Predictive Features (Mean Absolute SHAP)",
-        color="Mean_Abs_SHAP",
-        color_continuous_scale="Blues"
-    )
-    fig_glob.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        yaxis=dict(autorange="reversed"),
-        height=450
-    )
-                                                                                                        ##SHAP EXPLANATION PLOTS
-# 1. GENERATE ALL 4 SHAP FIGURES
-    importance_df["Clean_Feature"] = importance_df["Feature"].apply(lambda x: x.replace("_", " ").title())
-    
-    # Plot 1: Top 15 Global Features
-    fig_glob = px.bar(
-        importance_df.head(15),
-        y="Clean_Feature",
-        x="Mean_Abs_SHAP",
-        orientation="h",    
-        title="Top 15 Global Predictive Features (Mean Absolute SHAP)",
-        color="Mean_Abs_SHAP",
-        color_continuous_scale="Blues"
-    )
-    fig_glob.update_layout(
-        template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis=dict(autorange="reversed"), height=400
-    )
-    
-    # Plot 2: Beeswarm
-    fig_summary = plot_summary(shap_vals, X_sample_processed)
-    
-    # Plot 3: Mean SHAP Bar Chart
-    fig_bar = plot_mean_bar(shap_vals, X_sample_processed)
-    
-    # Plot 4: Feature Dependence Plot (Age)
-    fig_display = X_sample_processed.copy()
-    fig_display["age"] = df_sample.loc[fig_display.index, "age"] # Quick fix to ensure unscaled Age values on X-axis
-    fig_dependence = plot_dependence("age", shap_vals, fig_display) 
-
-
-    # 2. DISPLAY THEM IN A 2x2 GRID WITH EXPLANATIONS
-    st.markdown("<hr>", unsafe_allow_html=True)
-    
-    # --- ROW 1 ---
-    col_row1_left, col_row1_right = st.columns(2)
-    
-    with col_row1_left:
-        st.subheader("🧠 Top 15 Global Features")
-        st.plotly_chart(fig_glob, use_container_width=True)
-        # Explanation under Plot 1
-        st.info("""
-        **What this shows:** This chart displays the overall predictive importance of features. 
-        The longer the bar, the more weight the AI model places on this specific feature when determining 
-        whether *any* generic customer will churn or stay loyal.
-        """)
-        
-    with col_row1_right:
-        st.subheader("🐝 Feature Distributions (Beeswarm)")
-        st.plotly_chart(fig_summary, use_container_width=True)
-        # Explanation under Plot 2
-        st.info("""
-        **What this shows:** Every dot represents a single customer sample. 
-        * **Position (X-Axis):** Dots on the right push risk UP (higher churn); dots on the left pull risk DOWN.
-        * **Color:** Red represents high values of that feature, blue represents low values. 
-        For example, long red rows on the right mean high complaints strongly trigger churn.
-        """)
-        
-    # --- ROW 2 ---
-    st.markdown("<br>", unsafe_allow_html=True) # Adds a clean spacing between row 1 and row 2
-    col_row2_left, col_row2_right = st.columns(2)
-    
-    with col_row2_left:
-        st.subheader("📊 Mean SHAP Importance")
-        st.plotly_chart(fig_bar, use_container_width=True)
-        # Explanation under Plot 3
-        st.info("""
-        **What this shows:** A refined baseline representation of pure feature magnitude. 
-        It measures the average magnitude of change a feature introduces to the model's math, 
-        stripping away directionality to reveal raw predictive strength.
-        """)
-        
-    with col_row2_right:
-        st.subheader("📈 Feature Dependence (Age)")
-        st.plotly_chart(fig_dependence, use_container_width=True)
-        # Explanation under Plot 4
-        st.info("""
-        **What this shows:** This highlights how the customer's exact age correlates to churn behavior. 
-        The Y-axis represents the SHAP risk impact. If you see the plot dip below 0 at certain ages, 
-        it indicates specific age bands that are mathematically more loyal to the network.
-        """)
-        
-# ----------------- MODE 2: DATABASE EXPLORER -----------------
-elif app_mode == "Database Explorer":
-    st.subheader("🔍 Individual Customer Profiler & Prediction Explainer")
+# ----------------- MODE 3: INDIVIDUAL RISK EXPLAINER -----------------
+elif app_mode == "Customer Details":
+    st.subheader("Customer Details")
     
     if len(filtered_df) == 0:
         st.warning("No customers match the active filters. Reset filters on the sidebar to explore.")
@@ -531,7 +753,7 @@ elif app_mode == "Database Explorer":
         st.markdown("<hr>", unsafe_allow_html=True)
         
         with st.spinner("Analyzing prediction explainability..."):
-            raw_input_df = customer_row.drop(columns=["churn"])
+            raw_input_df = customer_row.drop(columns=["customer_id", "churn", "churn_probability", "Risk Score (%)", "Risk Level"], errors="ignore")
             explanation = explainer.explain_instance(raw_input_df)
             prob = explanation["probability"]
             contributions = explanation["contributions"]
@@ -539,7 +761,7 @@ elif app_mode == "Database Explorer":
         col_pred1, col_pred2 = st.columns([1, 1])
         
         with col_pred1:
-            st.markdown("### 🧭 Risk Score Dial")            
+            st.subheader("Risk Score Dial")            
             gauge_fig = go.Figure(go.Indicator(         
                 mode="gauge+number",
                 value=prob * 100,
@@ -582,350 +804,33 @@ elif app_mode == "Database Explorer":
             local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
             st.plotly_chart(local_shap_fig, use_container_width=True)
 
-            st.markdown("#### 🌊 Prediction Path (Waterfall Plot)")
-            fig_waterfall = plot_waterfall(explanation["shap_values_obj"], max_display=8)
-            st.plotly_chart(fig_waterfall, use_container_width=True)
+            st.subheader("Prediction Path (Waterfall Plot)")
+            fig_waterfall = plot_waterfall(explanation["shap_values_obj"], None, max_display=8)
+            st.pyplot(fig_waterfall)
 
-# ----------------- MODE: BATCH PREDICTION & RISK EXPLORER -----------------
-elif app_mode == "Batch Prediction & Risk Explorer":
-    st.subheader("📂 Customer Segment Batch Prediction & Risk Explainer")
-    st.markdown("Upload a CSV dataset of subscribers to identify high-risk individuals, understand churn reasons, and analyze segment-level risk distribution.")
+        st.markdown("### 📋 Diagnostic Summary (Key Reasons)")
+        risk_reasons = get_human_readable_reasons(contributions, top_n=3, mode="risk")
+        mitigation_reasons = get_human_readable_reasons(contributions, top_n=3, mode="mitigation")
+        
+        col_reason1, col_reason2 = st.columns(2)
+        with col_reason1:
+            st.markdown("##### 🚨 Top Churn Risk Factors")
+            if risk_reasons:
+                for reason in risk_reasons:
+                    st.markdown(f"- 🔴 {reason}")
+            else:
+                st.markdown("No significant positive risk drivers identified.")
+        with col_reason2:
+            st.markdown("##### 🛡️ Top Retention Factors (Holding Risk Down)")
+            if mitigation_reasons:
+                for reason in mitigation_reasons:
+                    st.markdown(f"- 🟢 {reason}")
+            else:
+                st.markdown("No significant mitigating factors identified.")
 
-    sample_df = df_raw.copy()
-    if "churn" in sample_df.columns:
-        sample_df = sample_df.drop(columns=["churn"])
-    
-    sample_csv_data = sample_df.head(10).to_csv(index=False)
-    
-    st.markdown("### 🛠️ Step 1: Download & Prepare Your Data")
-    col_dl, col_info = st.columns([1, 2])
-    with col_dl:
-        st.download_button(
-            label="📥 Download Sample CSV Template",
-            data=sample_csv_data,
-            file_name="nepal_telecom_churn_template.csv",
-            mime="text/csv",
-            help="Download a pre-formatted CSV template with the required columns for batch prediction."
-        )
-    with col_info:
-        st.info("💡 **Tip:** Use this template to format your database. Make sure all numerical and categorical columns are present. The `customer_id` is recommended but optional.")
-
-    st.markdown("### 📤 Step 2: Upload Subscriber Dataset")
-    uploaded_file = st.file_uploader("Choose a CSV file containing subscriber records", type=["csv"])
-
-    if uploaded_file is not None:
-        try:
-            uploaded_df = pd.read_csv(uploaded_file)
-            st.success(f"✅ Successfully loaded dataset with **{len(uploaded_df)}** customer records.")
-            
-            required_features = NUMERICAL_COLS + CATEGORICAL_COLS + BINARY_COLS
-            missing_features = [col for col in required_features if col not in uploaded_df.columns]
-            
-            if missing_features:
-                st.error("❌ **Invalid CSV Format!** The uploaded file is missing critical columns required by the model:")
-                st.write(missing_features)
-                st.warning("Please ensure your uploaded CSV matches the template columns exactly.")
-                st.stop()
-                
-            if "customer_id" not in uploaded_df.columns:
-                uploaded_df["customer_id"] = [f"UPLOAD-{i+1:04d}" for i in range(len(uploaded_df))]
-                
-            with st.spinner("Analyzing subscriber risk profiles using ML pipeline..."):
-                probs = process_uploaded_data(uploaded_df, explainer)
-                uploaded_df["churn_probability"] = probs
-                uploaded_df["Risk Score (%)"] = (probs * 100).round(1)
-                uploaded_df["Risk Level"] = np.where(probs > 0.7, "🔴 Critical", np.where(probs > 0.3, "⚠️ Elevated", "🟢 Low"))
-            
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.subheader("⚡ Batch Risk Threshold Control")
-            threshold = st.slider("Define Risk Warning Threshold", min_value=0.1, max_value=0.9, value=0.5, step=0.05,
-                                  help="Customers with a churn probability above this threshold will be flagged as 'At Risk'.")
-            
-            total_uploaded = len(uploaded_df)
-            at_risk_df = uploaded_df[uploaded_df["churn_probability"] >= threshold]
-            at_risk_count = len(at_risk_df)
-            avg_risk = uploaded_df["churn_probability"].mean() * 100
-            revenue_at_risk = at_risk_df["avg_recharge_amount_npr"].sum() if "avg_recharge_amount_npr" in at_risk_df.columns else 0.0
-            
-            st.markdown(f"""
-            <div class="metric-card-container">
-                <div class="metric-card">
-                    <div class="metric-value">{total_uploaded:,}</div>
-                    <div class="metric-label">Total Uploaded</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{at_risk_count:,} ({at_risk_count/total_uploaded*100:.1f}%)</div>
-                    <div class="metric-label">At Risk (P ≥ {threshold:.0%})</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{avg_risk:.1f}%</div>
-                    <div class="metric-label">Average Churn Risk</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">Rs. {revenue_at_risk:,.0f}</div>
-                    <div class="metric-label">Revenue at Risk</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("<hr>", unsafe_allow_html=True)
-            
-            tab_overview, tab_individual, tab_drivers = st.tabs([
-                "📊 Batch Overview & Risk Registry",
-                "🔍 Individual Customer Risk Explainer",
-                "🌍 Overall Segment Drivers (Global SHAP)"
-            ])
-            
-            with tab_overview:
-                col_c1, col_c2 = st.columns(2)
-                with col_c1:
-                    risk_counts = uploaded_df["Risk Level"].value_counts().reset_index()
-                    risk_counts.columns = ["Risk Level", "Count"]
-                    all_levels = pd.DataFrame({"Risk Level": ["🔴 Critical", "⚠️ Elevated", "🟢 Low"]})
-                    risk_counts = all_levels.merge(risk_counts, on="Risk Level", how="left").fillna(0)
-                    
-                    fig_donut = px.pie(
-                        risk_counts,
-                        values="Count",
-                        names="Risk Level",
-                        hole=0.4,
-                        title="Risk Segment Distribution",
-                        color="Risk Level",
-                        color_discrete_map={
-                            "🔴 Critical": "#D32F2F",
-                            "⚠️ Elevated": "#EF6C00",
-                            "🟢 Low": "#2E7D32"
-                        }
-                    )
-                    fig_donut.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-                    st.plotly_chart(fig_donut, use_container_width=True)
-                    
-                with col_c2:
-                    fig_hist = px.histogram(
-                        uploaded_df,
-                        x="churn_probability",
-                        nbins=20,
-                        title="Distribution of Churn Probability Scores",
-                        labels={"churn_probability": "Churn Probability"},
-                        color_discrete_sequence=["#3b82f6"]
-                    )
-                    fig_hist.add_vline(x=threshold, line_width=2.5, line_color="#E53935", line_dash="dash",
-                                       annotation_text=f"Threshold ({threshold:.0%})", annotation_position="top right")
-                    fig_hist.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                                           xaxis_tickformat=".0%")
-                    st.plotly_chart(fig_hist, use_container_width=True)
-                
-                if "churn" in uploaded_df.columns:
-                    st.markdown("<hr>", unsafe_allow_html=True)
-                    st.subheader("📈 Uploaded Segment Model Performance Evaluation")
-                    st.markdown("Since the uploaded dataset contains actual target labels (`churn`), we can evaluate the model's accuracy on this segment:")
-                    
-                    from sklearn.metrics import accuracy_score, recall_score, precision_score, confusion_matrix
-                    
-                    y_true = uploaded_df["churn"].astype(int)
-                    y_pred = (uploaded_df["churn_probability"] >= threshold).astype(int)
-                    
-                    acc = accuracy_score(y_true, y_pred)
-                    rec = recall_score(y_true, y_pred)
-                    prec = precision_score(y_true, y_pred)
-                    cm = confusion_matrix(y_true, y_pred)
-                    
-                    m_cols = st.columns(3)
-                    with m_cols[0]:
-                        st.metric("Segment Accuracy", f"{acc*100:.1f}%")
-                    with m_cols[1]:
-                        st.metric("Segment Recall (Sensitivity)", f"{rec*100:.1f}%")
-                    with m_cols[2]:
-                        st.metric("Segment Precision", f"{prec*100:.1f}%")
-                        
-                    st.markdown(f"""
-                    **Confusion Matrix (Threshold = {threshold:.2f}):**
-                    - **True Negatives (Loyal predicted Loyal):** {cm[0][0]}
-                    - **False Positives (Loyal predicted Churn):** {cm[0][1]}
-                    - **False Negatives (Churn predicted Loyal):** {cm[1][0]}
-                    - **True Positives (Churn predicted Churn):** {cm[1][1]}
-                    """)
-                    
-                st.subheader("📋 Customer Risk Registry")
-                st.markdown("Search, filter, and review the risk profiles of all uploaded subscriber records.")
-                
-                col_f1, col_f2 = st.columns(2)
-                with col_f1:
-                    risk_filter = st.multiselect(
-                        "Filter by Risk Level",
-                        options=["🔴 Critical", "⚠️ Elevated", "🟢 Low"],
-                        default=["🔴 Critical", "⚠️ Elevated", "🟢 Low"]
-                    )
-                with col_f2:
-                    search_id = st.text_input("Search by Customer ID", "")
-                
-                display_df = uploaded_df.copy()
-                display_df = display_df[display_df["Risk Level"].isin(risk_filter)]
-                if search_id:
-                    display_df = display_df[display_df["customer_id"].astype(str).str.contains(search_id, case=False)]
-                
-                cols_to_show = ["customer_id", "Risk Level", "Risk Score (%)", "age", "gender", "province", 
-                                "tenure_days", "avg_recharge_amount_npr", "num_complaints_30d", "inactive_days"]
-                if "churn" in uploaded_df.columns:
-                    cols_to_show.append("churn")
-                    
-                st.dataframe(
-                    display_df[cols_to_show].sort_values(by="Risk Score (%)", ascending=False),
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-            with tab_individual:
-                st.subheader("🔍 Explainable AI: Customer-Specific Churn Drivers")
-                st.markdown("Select any customer from the uploaded dataset to dissect their risk score and view the exact reasons behind the prediction.")
-                
-                dropdown_df = uploaded_df.sort_values(by="churn_probability", ascending=False)
-                cust_options = [
-                    f"{row['customer_id']} ({row['Risk Level']} - {row['Risk Score (%)']:.1f}%)" 
-                    for _, row in dropdown_df.iterrows()
-                ]
-                
-                selected_cust_opt = st.selectbox("Select Customer to Explain", cust_options)
-                
-                if selected_cust_opt:
-                    selected_id = selected_cust_opt.split(" ")[0]
-                    cust_row = uploaded_df[uploaded_df["customer_id"] == selected_id]
-                    
-                    c_det1, c_det2 = st.columns([1, 2])
-                    
-                    with c_det1:
-                        st.markdown("#### 📋 Subscriber Demographic Profile")
-                        st.markdown(f"**Customer ID:** `{selected_id}`")
-                        st.markdown(f"**Age:** {cust_row['age'].values[0]}")
-                        st.markdown(f"**Gender:** {cust_row['gender'].values[0]}")
-                        st.markdown(f"**Province:** {cust_row['province'].values[0]}")
-                        st.markdown(f"**SIM Type:** {cust_row['sim_type'].values[0]}")
-                        st.markdown(f"**Tenure:** {cust_row['tenure_days'].values[0]} Days")
-                        st.markdown(f"**Average Recharge:** Rs. {cust_row['avg_recharge_amount_npr'].values[0]}")
-                        
-                    with c_det2:
-                        st.markdown("#### 📱 Usage & Experience Indicators")
-                        sc1, sc2, sc3 = st.columns(3)
-                        with sc1:
-                            st.metric("Calls Last 30d", f"{cust_row['calls_min_30d'].values[0]:.1f} Min")
-                            st.metric("Call Drop Rate", f"{cust_row['call_drop_rate'].values[0]*100:.2f}%")
-                        with sc2:
-                            st.metric("Data Usage 30d", f"{cust_row['data_gb_30d'].values[0]:.2f} GB")
-                            st.metric("Avg Speed", f"{cust_row['avg_data_speed_mbps'].values[0]:.1f} Mbps")
-                        with sc3:
-                            st.metric("Complaints 30d", f"{int(cust_row['num_complaints_30d'].values[0])}")
-                            st.metric("Inactive Days", f"{int(cust_row['inactive_days'].values[0])} Days")
-                            
-                    st.markdown("<hr>", unsafe_allow_html=True)
-                    
-                    with st.spinner("Calculating SHAP values for selected subscriber..."):
-                        raw_input_df = cust_row.drop(columns=["customer_id", "churn_probability", "Risk Score (%)", "Risk Level", "churn"], errors="ignore")
-                        explanation = explainer.explain_instance(raw_input_df)
-                        prob = explanation["probability"]
-                        contributions = explanation["contributions"]
-                    
-                    col_dial, col_shap = st.columns([1, 1])
-                    
-                    with col_dial:
-                        st.markdown("#### 🧭 Risk Score Dial")
-                        gauge_fig = go.Figure(go.Indicator(
-                            mode="gauge+number",
-                            value=prob * 100,
-                            domain={'x': [0, 1], 'y': [0, 1]},
-                            gauge={
-                                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#f8fafc"},
-                                'bar': {'color': "#D32F2F" if prob >= 0.7 else ("#EF6C00" if prob >= 0.3 else "#2E7D32")},
-                                'bgcolor': "#1e293b",
-                                'borderwidth': 1,
-                                'bordercolor': "#334155",
-                                'steps': [
-                                    {'range': [0, 30], 'color': 'rgba(46, 125, 50, 0.15)'},
-                                    {'range': [30, 70], 'color': 'rgba(239, 108, 0, 0.15)'},
-                                    {'range': [70, 100], 'color': 'rgba(211, 47, 47, 0.15)'}
-                                ]
-                            }
-                        ))
-                        gauge_fig.update_layout(
-                            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                            height=250, margin=dict(l=20, r=20, t=20, b=20)
-                        )
-                        st.plotly_chart(gauge_fig, use_container_width=True)
-                        
-                        if prob >= 0.7:
-                            st.error(f"🔴 **Critical Churn Risk ({prob*100:.1f}%)**: Highly likely to leave. Deploy active retention offers immediately.")
-                        elif prob >= 0.3:
-                            st.warning(f"⚠️ **Elevated Churn Risk ({prob*100:.1f}%)**: Moderate probability. Recommend targeted communication and service packs.")
-                        else:
-                            st.success(f"🟢 **Low Churn Risk ({prob*100:.1f}%)**: Active, loyal subscriber profile.")
-                            
-                    with col_shap:
-                        st.markdown("#### 🧠 AI Explanation: SHAP Impact")
-                        local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
-                        st.plotly_chart(local_shap_fig, use_container_width=True)
-                        
-                    st.markdown("#### 📋 Diagnostic Summary (Key Reasons)")
-                    risk_reasons = get_human_readable_reasons(contributions, top_n=3, mode="risk")
-                    mitigation_reasons = get_human_readable_reasons(contributions, top_n=3, mode="mitigation")
-                    
-                    col_reason1, col_reason2 = st.columns(2)
-                    with col_reason1:
-                        st.markdown("##### 🚨 Top Churn Risk Factors")
-                        if risk_reasons:
-                            for reason in risk_reasons:
-                                st.markdown(f"- 🔴 {reason}")
-                        else:
-                            st.markdown("No significant positive risk drivers identified.")
-                    with col_reason2:
-                        st.markdown("##### 🛡️ Top Retention Factors (Holding Risk Down)")
-                        if mitigation_reasons:
-                            for reason in mitigation_reasons:
-                                st.markdown(f"- 🟢 {reason}")
-                        else:
-                            st.markdown("No significant mitigating factors identified.")
-                            
-            with tab_drivers:
-                st.subheader("🌍 Overall Segment Churn Drivers (Segment Global SHAP)")
-                st.markdown("This analysis compiles the predictions of all uploaded customers to show which features have the greatest influence on churn decisions for **this uploaded segment**.")
-                
-                with st.spinner("Analyzing global segment driver importance..."):
-                    shap_vals, importance_up_df, X_up_processed, sample_len = compute_uploaded_global_shap(uploaded_df, explainer)
-                    
-                importance_up_df["Clean_Feature"] = importance_up_df["Feature"].apply(lambda x: x.replace("_", " ").title())
-                
-                fig_up_glob = px.bar(
-                    importance_up_df.head(15),
-                    y="Clean_Feature",
-                    x="Mean_Abs_SHAP",
-                    orientation="h",
-                    title=f"Top 15 Churn Drivers for Uploaded Segment (Sample Size: {sample_len} rows)",
-                    color="Mean_Abs_SHAP",
-                    color_continuous_scale="Reds"
-                )
-                fig_up_glob.update_layout(
-                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    yaxis=dict(autorange="reversed"), height=450
-                )
-                st.plotly_chart(fig_up_glob, use_container_width=True)
-                st.markdown("<hr>", unsafe_allow_html=True)
-                st.markdown("#### 🐝 Segment Feature Distributions (Beeswarm)")
-                fig_up_summary = plot_summary(shap_vals, X_up_processed)
-                st.plotly_chart(fig_up_summary, use_container_width=True)
-
-                st.markdown("#### 📊 Segment Feature Importance (Mean SHAP)")
-                fig_up_bar = plot_mean_bar(shap_vals, X_up_processed)
-                st.plotly_chart(fig_up_bar, use_container_width=True)
-
-                st.markdown("#### 🌊 Segment Prediction Path (Waterfall Plot)")
-                fig_up_waterfall = plot_waterfall(shap_vals, X_up_processed)
-                st.plotly_chart(fig_up_waterfall, use_container_width=True)
-                
-        except Exception as e:
-            st.error(f"❌ An error occurred while processing the uploaded file: {e}")
-            st.info("Please make sure the CSV contains all standard features of the subscriber churn dataset.")
-
-# ----------------- MODE 3: WHAT-IF SIMULATOR -----------------
-elif app_mode == "What-If Simulator":
-    st.subheader("🧪 Customer Scenario Simulator (What-If Analysis)")
+# ----------------- MODE 4: WHAT-IF SIMULATOR -----------------
+elif app_mode == "Simulator":
+    st.subheader("🧪 Simulator")
     st.markdown("Manually input subscriber details below to calculate real-time churn risk and see customized SHAP feature contributions.")
     
     col_sim_in1, col_sim_in2, col_sim_in3 = st.columns(3)
