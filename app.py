@@ -465,7 +465,7 @@ if app_mode == "Overview":
                     st.session_state.excel_report_bytes = f.read()
                 
                 # 2. PDF Report
-                pdf_path = generate_report_pdf(overall_summary, at_risk_df, filtered_df)
+                pdf_path = generate_report_pdf(overall_summary, filtered_df, explainer)
                 with open(pdf_path, "rb") as f:
                     st.session_state.pdf_report_bytes = f.read()
                 
