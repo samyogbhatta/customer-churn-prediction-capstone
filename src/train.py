@@ -125,7 +125,7 @@ def train_model(data_path, models_dir="models", random_state=42):
 if __name__ == "__main__":
     data_path = os.path.join("data", "telecom_churn_nepal.csv")
     if not os.path.exists(data_path):
-        print(f"Generating data first...")
+        print(f"Generating data first....")
         from data_generator import generate_telecom_data
         os.makedirs("data", exist_ok=True)
         df = generate_telecom_data(num_customers=5000)
