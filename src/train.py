@@ -11,7 +11,7 @@ from sklearn.model_selection import RandomizedSearchCV
 from imblearn.combine import SMOTETomek
 import joblib
 
-# Import preprocessing stepss
+# Import preprocessing stepsss
 from preprocessing import preprocess_and_save
 
 def train_model(data_path, models_dir="models", random_state=42):
