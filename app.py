@@ -337,40 +337,135 @@ app_mode = option_menu(
     }
 )
 
-# Sidebar UI Setup
-st.sidebar.image("https://img.icons8.com/clouds/100/database.png", width=80)
-st.sidebar.title("Dashboard Controls")
-st.sidebar.markdown(f"**Dataset Loaded:**\n`{st.session_state.uploaded_filename}`")
-st.sidebar.markdown(f"**Subscribers:** {len(st.session_state.uploaded_df):,}")
+# # Sidebar UI Setup
+# st.sidebar.image("https://img.icons8.com/clouds/100/database.png", width=80)
+# st.sidebar.title("Dashboard Controls")
+# st.sidebar.markdown(f"**Dataset Loaded:**\n`{st.session_state.uploaded_filename}`")
+# st.sidebar.markdown(f"**Subscribers:** {len(st.session_state.uploaded_df):,}")
 
-if st.sidebar.button("🔄 Reset & Upload New Data"):
-    del st.session_state.uploaded_df
-    if "uploaded_filename" in st.session_state:
-        del st.session_state.uploaded_filename
-    st.rerun()
+# if st.sidebar.button("🔄 Reset & Upload New Data"):
+#     del st.session_state.uploaded_df
+#     if "uploaded_filename" in st.session_state:
+#         del st.session_state.uploaded_filename
+#     st.rerun()
 
-st.sidebar.subheader("Filter Data")
-genders = ["All"] + list(st.session_state.uploaded_df["gender"].unique())
-gender_filter = st.sidebar.selectbox("Gender", genders)
+# st.sidebar.subheader("Filter Data")
+# genders = ["All"] + list(st.session_state.uploaded_df["gender"].unique())
+# gender_filter = st.sidebar.selectbox("Gender", genders)
 
-provinces = ["All"] + list(st.session_state.uploaded_df["province"].unique())
-province_filter = st.sidebar.selectbox("Province", provinces)
+# provinces = ["All"] + list(st.session_state.uploaded_df["province"].unique())
+# province_filter = st.sidebar.selectbox("Province", provinces)
 
-sim_types = ["All"] + list(st.session_state.uploaded_df["sim_type"].unique())
-sim_filter = st.sidebar.selectbox("SIM Type", sim_types)
+# sim_types = ["All"] + list(st.session_state.uploaded_df["sim_type"].unique())
+# sim_filter = st.sidebar.selectbox("SIM Type", sim_types)
 
-# Filter Dataset
+# # Filter Dataset
+# filtered_df = st.session_state.uploaded_df.copy()
+# if gender_filter != "All":
+#     filtered_df = filtered_df[filtered_df["gender"] == gender_filter]
+# if province_filter != "All":
+#     filtered_df = filtered_df[filtered_df["province"] == province_filter]
+# if sim_filter != "All":
+#     filtered_df = filtered_df[filtered_df["sim_type"] == sim_filter]
+#     at_risk_df = filtered_df[filtered_df["churn_probability"] >= 0.5].copy()
+
+#     # Compute and display KPIs only for non-simulator modes
+#     # overall_summary will be defined later after KPI calculations
+# # ----------------- FILTER LOGIC & DATA HANDLING -----------------
+
+# # Default values for filters when not on the Overview page
+# gender_filter = "All"
+# province_filter = "All"
+# sim_filter = "All"
+
+# # Filter Dataset initialization
+# filtered_df = st.session_state.uploaded_df.copy()
+
+# # ----------------- APP MODES & CONTENT -----------------
+
+# # Compute and display KPIs only for non-simulator modes
+# if app_mode != "Simulator":
+#     # Apply filters globally based on selections (Overview page dynamically updates these)
+#     if "gender_f" in st.session_state:
+#         if st.session_state.gender_f != "All":
+#             filtered_df = filtered_df[filtered_df["gender"] == st.session_state.gender_f]
+#         if st.session_state.province_f != "All":
+#             filtered_df = filtered_df[filtered_df["province"] == st.session_state.province_f]
+#         if st.session_state.sim_f != "All":
+#             filtered_df = filtered_df[filtered_df["sim_type"] == st.session_state.sim_f]
+
+#     total_customers = len(filtered_df)
+#     overall_churn_rate = (filtered_df["churn"].mean() * 100) if total_customers > 0 else 0.0
+#     model_accuracy = metrics_data.get("accuracy", 0.85)
+
+#     # Calculate simulated Revenue at Risk
+#     high_risk_revenue = 0.0
+#     if total_customers > 0:
+#         high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= 0.5, "avg_recharge_amount_npr"].sum()
+
+#     # Display KPI Section
+#     kpi_cols = st.columns(4)
+
+#     with kpi_cols[0]:
+#         st.markdown(f"""
+#         <div class="metric-card">
+#             <div class="metric-value">{total_customers:,}</div>
+#             <div class="metric-label">Total Customers</div>
+#         </div>
+#         """, unsafe_allow_html=True)
+
+#     with kpi_cols[1]:
+#         st.markdown(f"""
+#         <div class="metric-card">
+#             <div class="metric-value">{overall_churn_rate:.1f}%</div>
+#             <div class="metric-label">Churn Rate</div>
+#         </div>
+#         """, unsafe_allow_html=True)
+
+#     with kpi_cols[2]:
+#         st.markdown(f"""
+#         <div class="metric-card">
+#             <div class="metric-value">{model_accuracy*100:.1f}%</div>
+#             <div class="metric-label">Model Accuracy (XGB)</div>
+#         </div>
+#         """, unsafe_allow_html=True)
+
+#     with kpi_cols[3]:
+#         st.markdown(f"""
+#         <div class="metric-card">
+#             <div class="metric-value">Rs. {high_risk_revenue:,.0f}</div>
+#             <div class="metric-label">Monthly Revenue at Risk</div>
+#         </div>
+#         """, unsafe_allow_html=True)
+
+#     overall_summary = {
+#         "total_customers": total_customers,
+#         "overall_churn_rate": overall_churn_rate,
+#         "model_accuracy": model_accuracy,
+#         "high_risk_revenue": high_risk_revenue,
+#     }
+
+#     st.markdown("<hr>", unsafe_allow_html=True)
+
+# ----------------- HORIZONTAL CONTROL PANEL STATE INITIALIZATION -----------------
+# We initialize session state values to prevent rendering lag or metric miscalculations
+if "gender_f" not in st.session_state:
+    st.session_state.gender_f = "All"
+if "province_f" not in st.session_state:
+    st.session_state.province_f = "All"
+if "sim_f" not in st.session_state:
+    st.session_state.sim_f = "All"
+
+# Apply the horizontal filter values dynamically to the dataset
 filtered_df = st.session_state.uploaded_df.copy()
-if gender_filter != "All":
-    filtered_df = filtered_df[filtered_df["gender"] == gender_filter]
-if province_filter != "All":
-    filtered_df = filtered_df[filtered_df["province"] == province_filter]
-if sim_filter != "All":
-    filtered_df = filtered_df[filtered_df["sim_type"] == sim_filter]
-    at_risk_df = filtered_df[filtered_df["churn_probability"] >= 0.5].copy()
+if st.session_state.gender_f != "All":
+    filtered_df = filtered_df[filtered_df["gender"] == st.session_state.gender_f]
+if st.session_state.province_f != "All":
+    filtered_df = filtered_df[filtered_df["province"] == st.session_state.province_f]
+if st.session_state.sim_f != "All":
+    filtered_df = filtered_df[filtered_df["sim_type"] == st.session_state.sim_f]
 
-    # Compute and display KPIs only for non-simulator modes
-    # overall_summary will be defined later after KPI calculations
+# Compute and display KPIs only for non-simulator modes
 if app_mode != "Simulator":
     total_customers = len(filtered_df)
     overall_churn_rate = (filtered_df["churn"].mean() * 100) if total_customers > 0 else 0.0
@@ -416,19 +511,57 @@ if app_mode != "Simulator":
         </div>
         """, unsafe_allow_html=True)
 
-        overall_summary = {
-            "total_customers": total_customers,
-            "overall_churn_rate": overall_churn_rate,
-            "model_accuracy": model_accuracy,
-            "high_risk_revenue": high_risk_revenue,
-        }
+    overall_summary = {
+        "total_customers": total_customers,
+        "overall_churn_rate": overall_churn_rate,
+        "model_accuracy": model_accuracy,
+        "high_risk_revenue": high_risk_revenue,
+    }
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
 
+    
 # 📥 Download Report (PDF)
 if app_mode == "Overview":
     st.subheader("Overview & Demographics")
+    
+    # --- 🛠️ HORIZONTAL DASHBOARD CONTROLS ROW ---
+    st.markdown("### 🎛️ Dashboard Controls")
+    
+    # Info metadata bar
+    meta_col1, meta_col2 = st.columns([2, 1])
+    with meta_col1:
+        st.markdown(f"**Dataset Loaded:** `{st.session_state.uploaded_filename}`")
+    with meta_col2:
+        st.markdown(f"**Subscribers in Segment:** `{len(filtered_df):,}` / `{len(st.session_state.uploaded_df):,}` total")
+        
+    # Horizontal Filter Controls split into 4 column blocks
+    ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4 = st.columns(4)
+    
+    with ctrl_col1:
+        genders = ["All"] + list(st.session_state.uploaded_df["gender"].unique())
+        st.selectbox("Gender", genders, key="gender_f")
+
+    with ctrl_col2:
+        provinces = ["All"] + list(st.session_state.uploaded_df["province"].unique())
+        st.selectbox("Province", provinces, key="province_f")
+
+    with ctrl_col3:
+        sim_types = ["All"] + list(st.session_state.uploaded_df["sim_type"].unique())
+        st.selectbox("SIM Type", sim_types, key="sim_f")
+        
+    with ctrl_col4:
+        # Pushes the button down slightly so it naturally aligns perfectly on the baseline with the dropdown items
+        st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("🔄 Reset & Upload New", use_container_width=True, type="secondary"):
+            # Clear target session properties
+            for key in ["uploaded_df", "uploaded_filename", "gender_f", "province_f", "sim_f"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
+            
+    st.markdown("---")
     
     # 📊 Generate Executive Reports
     st.subheader("📊 Generate Executive Reports")
