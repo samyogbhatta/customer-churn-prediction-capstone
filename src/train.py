@@ -99,7 +99,7 @@ def train_model(data_path, models_dir="models", random_state=42):
     model.save_model(model_path)
     print(f"\nTrained model saved successfully to {model_path}")
     
-    # Save metrics and class information for the dashboard
+    # Save metrics and class information for the dashboards
     metrics = {
         "accuracy": float(accuracy),
         "precision": float(precision),
