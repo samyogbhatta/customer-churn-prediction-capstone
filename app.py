@@ -39,7 +39,7 @@ import src.components.style as style
 st.set_page_config(
     page_title="Telecom Churn Dashboard",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expandeed"
 )
 
 # Custom Premium CSS Styling (Dark Slate Aesthetic)
