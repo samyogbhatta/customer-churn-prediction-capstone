@@ -20,10 +20,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import json
 import joblib
-# pyrefly: ignore [missing-import]
-from streamlit_option_menu import option_menu
-
-# Import the custom navigation menu library
+import matplotlib.pyplot as plt
 # pyrefly: ignore [missing-import]
 from streamlit_option_menu import option_menu
 
@@ -42,11 +39,81 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Premium CSS Styling (Dark Slate Aesthetic)
-st.markdown(style.get_css(), unsafe_allow_html=True)
-# Load custom Nepali-themed stylesheet
-with open('styles.css', 'r', encoding='utf-8') as css_file:
-    st.markdown(f"<style>{css_file.read()}</style>", unsafe_allow_html=True)
+# Premium Custom CSS Styling (Crimson, Dark Blue, and White over Deep Midnight Canvas)
+st.markdown("""
+<style>
+    /* Main application background and default text */
+    .stApp {
+        background-color: #090d16 !important;
+        color: #f1f5f9 !important;
+    }
+    
+    /* Clean block structure overrides */
+    div[data-testid="stVerticalBlock"] > div {
+        background-color: transparent;
+    }
+    
+   /* Premium KPI Summary & Data Presentation Cards */
+    .metric-card {
+        background-color: #0a192f !important;
+        border: 1px solid #172a45 !important;
+        border-left: 4px solid #dc143c !important; /* Crimson Left Highlight Border */
+        border-radius: 8px;
+        padding: 10px 14px; 
+        
+        /* Centering text inside the box */
+        text-align: center; /* <-- ADDED: Centers all values and labels perfectly */
+        
+        /* Width and alignment spacing overrides */
+        width: 100%;         /* <-- UPDATED: Controls width relative to column slot */
+        max-width: 190px;   /* <-- UPDATED: Restricts maximum card stretching width */
+        margin: 0;     /* Aligns cards nicely within their native layouts */
+        
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+        margin-bottom: 12px;
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    
+    .metric-card:hover {
+        border-color: #dc143c !important;
+        transform: translateY(-2px);
+    }
+    
+    .metric-value {
+        font-size: 1.6rem; 
+        font-weight: 700;
+        color: #ffffff !important;
+        line-height: 1.2;
+    }
+    
+    .metric-label {
+        font-size: 0.75rem; 
+        color: #94a3b8 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 2px;
+        display: block;    /* Ensures text layout alignment behaviors remain block-centered */
+    }
+    
+    /* Form Dropdown & Element styling overrides */
+    div[data-baseweb="select"], div[data-baseweb="input"] {
+        background-color: #0f172a !important;
+        border-radius: 6px;
+    }
+    
+    /* Global Section Breaks */
+    hr {
+        border-color: #1e293b !important;
+        margin: 2rem 0;
+    }
+
+    /* Customizing fallback text and elements */
+    h1, h2, h3, h4, h5, h6 {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Helper functions for cached loading
 @st.cache_data
@@ -71,12 +138,7 @@ def load_model_metrics(metrics_path="models/metrics.json"):
         return json.load(f)
 
 def get_human_readable_reasons(contributions, top_n=3, mode="risk"):
-    """
-    Translates SHAP contributions into friendly human-readable descriptions.
-    mode can be "risk" (positive SHAP) or "mitigation" (negative SHAP).
-    """
     reasons = []
-    
     if mode == "risk":
         filtered = contributions[contributions["SHAP_Value"] > 0].copy()
     else:
@@ -85,8 +147,6 @@ def get_human_readable_reasons(contributions, top_n=3, mode="risk"):
     for _, row in filtered.head(top_n).iterrows():
         feat = row["Feature"]
         val = row["Feature_Value"]
-        
-        # Friendly description formatting
         desc = ""
         if feat == "num_complaints_30d":
             desc = f"High number of complaints in last 30 days ({int(val)} complaints)"
@@ -103,42 +163,20 @@ def get_human_readable_reasons(contributions, top_n=3, mode="risk"):
         elif feat == "last_recharge_days_ago":
             desc = f"Long gap since last recharge ({int(val)} days ago)"
         elif feat == "avg_recharge_amount_npr":
-            if mode == "risk":
-                desc = f"Low average recharge amount (Rs. {val:.1f})"
-            else:
-                desc = f"Healthy average recharge amount (Rs. {val:.1f})"
+            desc = f"Low average recharge amount (Rs. {val:.1f})" if mode == "risk" else f"Healthy average recharge amount (Rs. {val:.1f})"
         elif feat == "tenure_days":
-            if mode == "risk":
-                desc = f"Short subscription tenure ({int(val)} days)"
-            else:
-                desc = f"Long-term loyal subscription tenure ({int(val)} days)"
+            desc = f"Short subscription tenure ({int(val)} days)" if mode == "risk" else f"Long-term loyal subscription tenure ({int(val)} days)"
         elif feat == "avg_data_speed_mbps":
-            if mode == "risk":
-                desc = f"Slow average data speed ({val:.2f} Mbps)"
-            else:
-                desc = f"Fast average data speed ({val:.2f} Mbps)"
+            desc = f"Slow average data speed ({val:.2f} Mbps)" if mode == "risk" else f"Fast average data speed ({val:.2f} Mbps)"
         elif feat == "data_gb_30d":
-            if mode == "risk":
-                desc = f"Low data usage last month ({val:.2f} GB)"
-            else:
-                desc = f"High data usage last month ({val:.2f} GB)"
+            desc = f"Low data usage last month ({val:.2f} GB)" if mode == "risk" else f"High data usage last month ({val:.2f} GB)"
         elif feat == "calls_min_30d":
-            if mode == "risk":
-                desc = f"Low call duration last month ({val:.1f} minutes)"
-            else:
-                desc = f"High call duration last month ({val:.1f} minutes)"
+            desc = f"Low call duration last month ({val:.1f} minutes)" if mode == "risk" else f"High call duration last month ({val:.1f} minutes)"
         elif feat == "recharge_count_30d":
-            if mode == "risk":
-                desc = f"Few recharges in last 30 days ({int(val)} times)"
-            else:
-                desc = f"Frequent recharges in last 30 days ({int(val)} times)"
+            desc = f"Few recharges in last 30 days ({int(val)} times)" if mode == "risk" else f"Frequent recharges in last 30 days ({int(val)} times)"
         elif feat in ["data_pack_active", "voice_pack_active", "vas_active", "roaming_active"]:
             pack_name = feat.replace("_active", "").replace("_", " ").title()
-            if val == 1:
-                desc = f"Active {pack_name} service"
-            else:
-                desc = f"No active {pack_name} service"
-        # Categorical features
+            desc = f"Active {pack_name} service" if val == 1 else f"No active {pack_name} service"
         elif "_" in feat:
             parts = feat.split("_")
             group = parts[0].title()
@@ -146,16 +184,10 @@ def get_human_readable_reasons(contributions, top_n=3, mode="risk"):
             if val == 1:
                 desc = f"{group} is {category}"
                 
-        # Fallback if no specific template
         if not desc:
             clean_feat = feat.replace("_", " ").title()
-            if mode == "risk":
-                desc = f"{clean_feat} is {val} (pushing risk up)"
-            else:
-                desc = f"{clean_feat} is {val} (holding risk down)"
-                
+            desc = f"{clean_feat} is {val} (pushing risk up)" if mode == "risk" else f"{clean_feat} is {val} (holding risk down)"
         reasons.append(desc)
-        
     return reasons
 
 @st.cache_data
@@ -178,14 +210,12 @@ def compute_uploaded_global_shap(uploaded_df_raw, _explainer_instance):
 explainer = load_explainer()
 metrics_data = load_model_metrics()
 
-# Check if models are initialized
 if explainer is None or metrics_data is None:
     st.warning("ML Pipeline needs to be executed before running the dashboard.")
     st.info("Please run the data generator and training pipeline in your terminal first:")
     st.code("python src/data_generator.py\npython src/train.py", language="bash")
     st.stop()
 
-# Define raw required features (before feature engineering)
 REQUIRED_RAW_FEATURES = [
     "age", "gender", "province", "district_type", "sim_type", "tenure_days",
     "calls_min_30d", "sms_count_30d", "data_gb_30d", "night_usage_pct",
@@ -202,13 +232,10 @@ def process_and_store_uploaded_data(uploaded_df_raw, filename):
         return missing_cols
         
     uploaded_df = uploaded_df_raw.copy()
-    
-    # Auto-generate customer_id if missing
     if "customer_id" not in uploaded_df.columns:
         uploaded_df["customer_id"] = [f"NP-CUST-{i+1:05d}" for i in range(len(uploaded_df))]
         
-    # Get probabilities from model
-    X_input = uploaded_df[REQUIRED_RAW_FEATURES] # ensure we pass only standard columns
+    X_input = uploaded_df[REQUIRED_RAW_FEATURES]
     X_processed = explainer.get_preprocessed_df(X_input)
     probs = explainer.model.predict_proba(X_processed)[:, 1]
     
@@ -216,32 +243,26 @@ def process_and_store_uploaded_data(uploaded_df_raw, filename):
     uploaded_df["Risk Score (%)"] = (probs * 100).round(1)
     uploaded_df["Risk Level"] = np.where(probs >= 0.7, "🔴 Critical", np.where(probs >= 0.3, "⚠️ Elevated", "🟢 Low"))
     
-    # Fallback for churn label
     if "churn" not in uploaded_df.columns or uploaded_df["churn"].isna().all():
         uploaded_df["churn"] = (probs >= 0.5).astype(int)
     else:
-        # Fill missing churn entries if any
         uploaded_df["churn"] = uploaded_df["churn"].fillna(0).astype(int)
         
     st.session_state.uploaded_df = uploaded_df
     st.session_state.uploaded_filename = filename
     return None
 
-# Header Section
 st.title("📊 Nepal Telecom Churn Dashboard")
 st.markdown("Developed Automated Customer Churn Prediction System Using Machine Learning and Explainable AI (SHAP)")
 
-# Welcome / File Upload Screen if no data has been uploaded yet
 if "uploaded_df" not in st.session_state:
     st.markdown("<hr>", unsafe_allow_html=True)
     st.subheader("📤 Get Started: Upload Your Dataset")
-    st.markdown("Welcome! Upload your data or use the demo to explore churn predictions.")
     
     col_upload, col_template = st.columns([2, 1])
     
     with col_template:
         st.markdown("### 📋 Required Columns")
-        st.markdown("- Required columns: age, gender, province, district, SIM type, tenure, calls, SMS, data, signal, drop rate, speed, complaints, recharge info, service flags, trends. Optional: customer_id, churn")
         st.code("""
 - Demographic: age, gender, province, district_type
 - SIM info: sim_type, tenure_days
@@ -254,7 +275,6 @@ if "uploaded_df" not in st.session_state:
 - (Optional): customer_id, churn
         """, language="text")
         
-        # Load sample data if exists for downloading template
         DATA_PATH = "data/telecom_churn_nepal.csv"
         df_demo = load_dataset(DATA_PATH)
         if df_demo is not None:
@@ -266,12 +286,11 @@ if "uploaded_df" not in st.session_state:
                 label="📥 Download CSV Template",
                 data=sample_csv_data,
                 file_name="nepal_telecom_churn_template.csv",
-                mime="text/csv",
-                help="Download a pre-formatted CSV template with standard column headers."
+                mime="text/csv"
             )
             
             st.markdown("---")
-            if st.button("🚀 Load Demo Dataset", help="Quickly explore the dashboard using pre-generated Nepali subscriber data."):
+            if st.button("🚀 Load Demo Dataset"):
                 errors = process_and_store_uploaded_data(df_demo, "telecom_churn_nepal_demo.csv")
                 if errors:
                     st.error(f"Demo dataset is missing columns: {errors}")
@@ -291,17 +310,14 @@ if "uploaded_df" not in st.session_state:
                 if errors:
                     st.error("Missing required columns:")
                     st.write(errors)
-                    st.warning("Please download and use the template CSV from the side column.")
                 else:
                     st.success(f"Processed {len(uploaded_df_raw)} records.")
                     st.rerun()
             except Exception as e:
-                temp_msg = f"Failed to process CSV: {e}"
-        # Stop execution only if no data is loaded
+                st.error(f"Failed to process CSV: {e}")
         if "uploaded_df" not in st.session_state:
             st.stop()
 
-# ----------------- COATED CAPSULE INTERFACE NAVIGATION -----------------
 app_mode = option_menu(
     menu_title=None,
     options=["Overview", "Customer List", "Customer Details", "Simulator"],
@@ -312,7 +328,8 @@ app_mode = option_menu(
         "container": {
             "padding": "12px 0px", 
             "background-color": "#0f172a", 
-            "border-radius": "0px"
+            "border-radius": "6px",
+            "border": "1px solid #1e293b"
         },
         "icon": {
             "color": "#ffffff", 
@@ -328,127 +345,15 @@ app_mode = option_menu(
             "--hover-color": "#1e293b"      
         },
         "nav-link-selected": {
-            "background-color": "#dc2626", 
+            "background-color": "#f90d3d",
             "color": "#ffffff",             
             "font-weight": "600",
             "border-radius": "50px",        
-            "box-shadow": "0px 0px 12px rgba(220, 38, 38, 0.4)" 
+            "box-shadow": "0px 0px 12px rgba(220, 20, 60, 0.4)" 
         }
     }
 )
 
-# # Sidebar UI Setup
-# st.sidebar.image("https://img.icons8.com/clouds/100/database.png", width=80)
-# st.sidebar.title("Dashboard Controls")
-# st.sidebar.markdown(f"**Dataset Loaded:**\n`{st.session_state.uploaded_filename}`")
-# st.sidebar.markdown(f"**Subscribers:** {len(st.session_state.uploaded_df):,}")
-
-# if st.sidebar.button("🔄 Reset & Upload New Data"):
-#     del st.session_state.uploaded_df
-#     if "uploaded_filename" in st.session_state:
-#         del st.session_state.uploaded_filename
-#     st.rerun()
-
-# st.sidebar.subheader("Filter Data")
-# genders = ["All"] + list(st.session_state.uploaded_df["gender"].unique())
-# gender_filter = st.sidebar.selectbox("Gender", genders)
-
-# provinces = ["All"] + list(st.session_state.uploaded_df["province"].unique())
-# province_filter = st.sidebar.selectbox("Province", provinces)
-
-# sim_types = ["All"] + list(st.session_state.uploaded_df["sim_type"].unique())
-# sim_filter = st.sidebar.selectbox("SIM Type", sim_types)
-
-# # Filter Dataset
-# filtered_df = st.session_state.uploaded_df.copy()
-# if gender_filter != "All":
-#     filtered_df = filtered_df[filtered_df["gender"] == gender_filter]
-# if province_filter != "All":
-#     filtered_df = filtered_df[filtered_df["province"] == province_filter]
-# if sim_filter != "All":
-#     filtered_df = filtered_df[filtered_df["sim_type"] == sim_filter]
-#     at_risk_df = filtered_df[filtered_df["churn_probability"] >= 0.5].copy()
-
-#     # Compute and display KPIs only for non-simulator modes
-#     # overall_summary will be defined later after KPI calculations
-# # ----------------- FILTER LOGIC & DATA HANDLING -----------------
-
-# # Default values for filters when not on the Overview page
-# gender_filter = "All"
-# province_filter = "All"
-# sim_filter = "All"
-
-# # Filter Dataset initialization
-# filtered_df = st.session_state.uploaded_df.copy()
-
-# # ----------------- APP MODES & CONTENT -----------------
-
-# # Compute and display KPIs only for non-simulator modes
-# if app_mode != "Simulator":
-#     # Apply filters globally based on selections (Overview page dynamically updates these)
-#     if "gender_f" in st.session_state:
-#         if st.session_state.gender_f != "All":
-#             filtered_df = filtered_df[filtered_df["gender"] == st.session_state.gender_f]
-#         if st.session_state.province_f != "All":
-#             filtered_df = filtered_df[filtered_df["province"] == st.session_state.province_f]
-#         if st.session_state.sim_f != "All":
-#             filtered_df = filtered_df[filtered_df["sim_type"] == st.session_state.sim_f]
-
-#     total_customers = len(filtered_df)
-#     overall_churn_rate = (filtered_df["churn"].mean() * 100) if total_customers > 0 else 0.0
-#     model_accuracy = metrics_data.get("accuracy", 0.85)
-
-#     # Calculate simulated Revenue at Risk
-#     high_risk_revenue = 0.0
-#     if total_customers > 0:
-#         high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= 0.5, "avg_recharge_amount_npr"].sum()
-
-#     # Display KPI Section
-#     kpi_cols = st.columns(4)
-
-#     with kpi_cols[0]:
-#         st.markdown(f"""
-#         <div class="metric-card">
-#             <div class="metric-value">{total_customers:,}</div>
-#             <div class="metric-label">Total Customers</div>
-#         </div>
-#         """, unsafe_allow_html=True)
-
-#     with kpi_cols[1]:
-#         st.markdown(f"""
-#         <div class="metric-card">
-#             <div class="metric-value">{overall_churn_rate:.1f}%</div>
-#             <div class="metric-label">Churn Rate</div>
-#         </div>
-#         """, unsafe_allow_html=True)
-
-#     with kpi_cols[2]:
-#         st.markdown(f"""
-#         <div class="metric-card">
-#             <div class="metric-value">{model_accuracy*100:.1f}%</div>
-#             <div class="metric-label">Model Accuracy (XGB)</div>
-#         </div>
-#         """, unsafe_allow_html=True)
-
-#     with kpi_cols[3]:
-#         st.markdown(f"""
-#         <div class="metric-card">
-#             <div class="metric-value">Rs. {high_risk_revenue:,.0f}</div>
-#             <div class="metric-label">Monthly Revenue at Risk</div>
-#         </div>
-#         """, unsafe_allow_html=True)
-
-#     overall_summary = {
-#         "total_customers": total_customers,
-#         "overall_churn_rate": overall_churn_rate,
-#         "model_accuracy": model_accuracy,
-#         "high_risk_revenue": high_risk_revenue,
-#     }
-
-#     st.markdown("<hr>", unsafe_allow_html=True)
-
-# ----------------- HORIZONTAL CONTROL PANEL STATE INITIALIZATION -----------------
-# We initialize session state values to prevent rendering lag or metric miscalculations
 if "gender_f" not in st.session_state:
     st.session_state.gender_f = "All"
 if "province_f" not in st.session_state:
@@ -456,7 +361,6 @@ if "province_f" not in st.session_state:
 if "sim_f" not in st.session_state:
     st.session_state.sim_f = "All"
 
-# Apply the horizontal filter values dynamically to the dataset
 filtered_df = st.session_state.uploaded_df.copy()
 if st.session_state.gender_f != "All":
     filtered_df = filtered_df[filtered_df["gender"] == st.session_state.gender_f]
@@ -465,109 +369,69 @@ if st.session_state.province_f != "All":
 if st.session_state.sim_f != "All":
     filtered_df = filtered_df[filtered_df["sim_type"] == st.session_state.sim_f]
 
-# Compute and display KPIs only for non-simulator modes
 if app_mode != "Simulator":
     total_customers = len(filtered_df)
     overall_churn_rate = (filtered_df["churn"].mean() * 100) if total_customers > 0 else 0.0
     model_accuracy = metrics_data.get("accuracy", 0.85)
 
-    # Calculate simulated Revenue at Risk
     high_risk_revenue = 0.0
     if total_customers > 0:
         high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= 0.5, "avg_recharge_amount_npr"].sum()
 
-    # Display KPI Section
-    kpi_cols = st.columns(4)
-
-    with kpi_cols[0]:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{total_customers:,}</div>
-            <div class="metric-label">Total Customers</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with kpi_cols[1]:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{overall_churn_rate:.1f}%</div>
-            <div class="metric-label">Churn Rate</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with kpi_cols[2]:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{model_accuracy*100:.1f}%</div>
-            <div class="metric-label">Model Accuracy (XGB)</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with kpi_cols[3]:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">Rs. {high_risk_revenue:,.0f}</div>
-            <div class="metric-label">Monthly Revenue at Risk</div>
-        </div>
-        """, unsafe_allow_html=True)
-
+    with st.container():
+        st.markdown('<div style="padding: 0 10%;">', unsafe_allow_html=True)
+        
+        kpi_cols = st.columns(4, gap="small")
+        with kpi_cols[0]:
+            st.markdown(f'<div class="metric-card"><div class="metric-value">{total_customers:,}</div><div class="metric-label">Total Customers</div></div>', unsafe_allow_html=True)
+        with kpi_cols[1]:
+            st.markdown(f'<div class="metric-card"><div class="metric-value">{overall_churn_rate:.1f}%</div><div class="metric-label">Churn Rate</div></div>', unsafe_allow_html=True)
+        with kpi_cols[2]:
+            st.markdown(f'<div class="metric-card"><div class="metric-value">{model_accuracy*100:.1f}%</div><div class="metric-label">Model Accuracy</div></div>', unsafe_allow_html=True)
+        with kpi_cols[3]:
+            st.markdown(f'<div class="metric-card"><div class="metric-value">Rs. {high_risk_revenue:,.0f}</div><div class="metric-label">Revenue at Risk</div></div>', unsafe_allow_html=True)
+            
+        st.markdown('</div>', unsafe_allow_html=True)
+        
     overall_summary = {
         "total_customers": total_customers,
         "overall_churn_rate": overall_churn_rate,
         "model_accuracy": model_accuracy,
         "high_risk_revenue": high_risk_revenue,
     }
-
     st.markdown("<hr>", unsafe_allow_html=True)
 
-
-    
-# 📥 Download Report (PDF)
 if app_mode == "Overview":
     st.subheader("Overview & Demographics")
-    
-    # --- 🛠️ HORIZONTAL DASHBOARD CONTROLS ROW ---
     st.markdown("### 🎛️ Dashboard Controls")
     
-    # Info metadata bar
     meta_col1, meta_col2 = st.columns([2, 1])
     with meta_col1:
         st.markdown(f"**Dataset Loaded:** `{st.session_state.uploaded_filename}`")
     with meta_col2:
         st.markdown(f"**Subscribers in Segment:** `{len(filtered_df):,}` / `{len(st.session_state.uploaded_df):,}` total")
         
-    # Horizontal Filter Controls split into 4 column blocks
     ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4 = st.columns(4)
-    
     with ctrl_col1:
         genders = ["All"] + list(st.session_state.uploaded_df["gender"].unique())
         st.selectbox("Gender", genders, key="gender_f")
-
     with ctrl_col2:
         provinces = ["All"] + list(st.session_state.uploaded_df["province"].unique())
         st.selectbox("Province", provinces, key="province_f")
-
     with ctrl_col3:
         sim_types = ["All"] + list(st.session_state.uploaded_df["sim_type"].unique())
         st.selectbox("SIM Type", sim_types, key="sim_f")
-        
     with ctrl_col4:
-        # Pushes the button down slightly so it naturally aligns perfectly on the baseline with the dropdown items
         st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Reset & Upload New", use_container_width=True, type="secondary"):
-            # Clear target session properties
+        if st.button("🔄 Reset & Upload New", use_container_width=True):
             for key in ["uploaded_df", "uploaded_filename", "gender_f", "province_f", "sim_f"]:
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
             
     st.markdown("---")
-    
-    # 📊 Generate Executive Reports
     st.subheader("📊 Generate Executive Reports")
-    st.markdown("Generate and download PDF/Excel summaries for the currently filtered customer segment.")
 
-    # Initialize session state for reports
     if "pdf_report_bytes" not in st.session_state:
         st.session_state.pdf_report_bytes = None
     if "excel_report_bytes" not in st.session_state:
@@ -575,21 +439,16 @@ if app_mode == "Overview":
     if "report_filter_hash" not in st.session_state:
         st.session_state.report_filter_hash = ""
 
-    # Generate a hash of the current filter status to detect when data changes
     current_filter_hash = f"{len(filtered_df)}_{overall_churn_rate:.2f}_{high_risk_revenue:.2f}"
-    
-    # If the filter changes, reset the generated reports
     if st.session_state.report_filter_hash != current_filter_hash:
         st.session_state.pdf_report_bytes = None
         st.session_state.excel_report_bytes = None
         st.session_state.report_filter_hash = current_filter_hash
 
     col_btn1, col_btn2 = st.columns(2)
-    
     with col_btn1:
         if st.button("⚙️ Generate Reports (PDF & Excel)", use_container_width=True):
             with st.spinner("Generating reports..."):
-                # 1. Excel Report
                 excel_path = os.path.join("reports", "at_risk_customers.xlsx")
                 os.makedirs("reports", exist_ok=True)
                 at_risk_df = filtered_df[filtered_df["churn_probability"] >= 0.5].copy()
@@ -597,40 +456,23 @@ if app_mode == "Overview":
                 with open(excel_path, "rb") as f:
                     st.session_state.excel_report_bytes = f.read()
                 
-                # 2. PDF Report
                 pdf_path = generate_report_pdf(overall_summary, filtered_df, explainer)
                 with open(pdf_path, "rb") as f:
                     st.session_state.pdf_report_bytes = f.read()
-                
                 st.success("Reports generated successfully!")
 
-    # Show download buttons if reports have been generated
     if st.session_state.pdf_report_bytes is not None and st.session_state.excel_report_bytes is not None:
         col_dl1, col_dl2 = st.columns(2)
         with col_dl1:
-            st.download_button(
-                label="📥 Save PDF Executive Report",
-                data=st.session_state.pdf_report_bytes,
-                file_name="churn_report.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
+            st.download_button(label="📥 Save PDF Executive Report", data=st.session_state.pdf_report_bytes, file_name="churn_report.pdf", mime="application/pdf", use_container_width=True)
         with col_dl2:
-            st.download_button(
-                label="📥 Save Excel At-Risk List",
-                data=st.session_state.excel_report_bytes,
-                file_name="at_risk_customers.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+            st.download_button(label="📥 Save Excel At-Risk List", data=st.session_state.excel_report_bytes, file_name="at_risk_customers.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     
     if len(filtered_df) == 0:
         st.warning("No customers match the current filter selection.")
     else:
         col1, col2 = st.columns(2)
-        
         with col1:
-            # Churn by Province Chart
             province_churn = filtered_df.groupby("province")["churn"].mean().reset_index()
             province_churn["churn_pct"] = province_churn["churn"] * 100
             province_churn = province_churn.sort_values(by="churn_pct", ascending=False)
@@ -640,7 +482,7 @@ if app_mode == "Overview":
                 x="province",
                 y="churn_pct",
                 color="churn_pct",
-                color_continuous_scale="Reds",
+                color_continuous_scale=[[0, '#003893'], [0.5, '#ffffff'], [1, '#dc143c']],
                 title="Observed Churn Rate by Province (%)",
                 labels={"province": "Province", "churn_pct": "Churn Rate (%)"}
             )
@@ -648,7 +490,6 @@ if app_mode == "Overview":
             st.plotly_chart(fig_prov, use_container_width=True)
 
         with col2:
-            # Numerical Correlation Heatmap
             corr_cols = [
                 "tenure_days", "calls_min_30d", "data_gb_30d", "avg_recharge_amount_npr", 
                 "signal_strength_dbm", "call_drop_rate", "num_complaints_30d", 
@@ -662,30 +503,27 @@ if app_mode == "Overview":
             fig_corr = px.imshow(
                 corr_matrix,
                 text_auto=".2f",
-                color_continuous_scale="RdBu_r",
+                color_continuous_scale=[[0, '#dc143c'], [0.5, '#ffffff'], [1, '#003893']],
                 title="Correlation Matrix (Key Features & Churn)"
             )
             fig_corr.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=500)
             st.plotly_chart(fig_corr, use_container_width=True)
 
         col3, col4 = st.columns(2)
-        
         with col3:
-            # Distribution of Signal Strength vs Churn
             fig_sig = px.histogram(
                 filtered_df,
                 x="signal_strength_dbm",
                 color=filtered_df["churn"].map({0: "Loyal", 1: "Churned"}),
                 barmode="overlay",
                 title="Signal Strength (dBm) Distribution by Churn",
-                color_discrete_map={"Loyal": "#2E7D32", "Churned": "#D32F2F"},
+                color_discrete_map={"Loyal": "#003893", "Churned": "#dc143c"},
                 opacity=0.7
             )
             fig_sig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_sig, use_container_width=True)
             
         with col4:
-            # Complaints & Resolution vs Churn
             has_complaints_df = filtered_df[filtered_df["num_complaints_30d"] > 0]
             if len(has_complaints_df) > 0:
                 fig_comp = px.scatter(
@@ -695,7 +533,7 @@ if app_mode == "Overview":
                     color=has_complaints_df["churn"].map({0: "Loyal", 1: "Churned"}),
                     title="Complaints Density vs Resolution Time (Hours)",
                     labels={"num_complaints_30d": "Number of Complaints", "avg_resolution_time_hours": "Resolution Time (Hrs)"},
-                    color_discrete_map={"Loyal": "#2E7D32", "Churned": "#D32F2F"},
+                    color_discrete_map={"Loyal": "#003893", "Churned": "#dc143c"},
                     opacity=0.6
                 )
                 fig_comp.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
@@ -704,12 +542,15 @@ if app_mode == "Overview":
                 st.info("No customer complaints registered in the selected segment to display.")
 
         st.subheader("Global Explanations (AI-Driven Feature Importance)")
-        st.markdown("This chart displays the average absolute impact each feature has on the overall model predictions.")
         
         @st.cache_data
         def compute_global_importance_filtered(_explainer, df_sample):       
             X_sample_raw = df_sample.drop(columns=["churn", "customer_id", "churn_probability", "Risk Score (%)", "Risk Level"], errors="ignore")
             X_sample_processed = _explainer.get_preprocessed_df(X_sample_raw)
+            
+            # FIX: Clean the raw processed columns to Title Case BEFORE computing SHAP and plotting
+            X_sample_processed.columns = [c.replace("_", " ").title() for c in X_sample_processed.columns]
+            
             shap_vals, importance_df = _explainer.get_global_explanations(X_sample_processed)
             return shap_vals, importance_df, X_sample_processed
 
@@ -719,9 +560,8 @@ if app_mode == "Overview":
         with st.spinner("Calculating global feature contributions..."):
             shap_vals, importance_df, X_sample_processed = compute_global_importance_filtered(explainer, df_sample)
         
-        importance_df["Clean_Feature"] = importance_df["Feature"].apply(lambda x: x.replace("_", " ").title())
+        importance_df["Clean_Feature"] = importance_df["Feature"]
         
-        # Plot 1: Top 15 Global Features
         fig_glob = px.bar(
             importance_df.head(15),
             y="Clean_Feature",
@@ -729,84 +569,118 @@ if app_mode == "Overview":
             orientation="h",    
             title="Top 15 Global Predictive Features (Mean Absolute SHAP)",
             color="Mean_Abs_SHAP",
-            color_continuous_scale="Blues"
+            color_continuous_scale=[[0, '#003893'], [1, '#dc143c']]
         )
-        fig_glob.update_layout(
-            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            yaxis=dict(autorange="reversed"), height=400
-        )
+        fig_glob.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(autorange="reversed"), height=400)
         
-        # Plot 2: Beeswarm
+    # --- FIX 2: SYNCHRONIZE MATPLOTLIB CONFIGS ---
+        plt.style.use('dark_background')
+        plt.rcParams['figure.facecolor'] = '#090d16'
+        plt.rcParams['axes.facecolor'] = '#090d16'
+        plt.rcParams['text.color'] = '#ffffff'
+        plt.rcParams['axes.labelcolor'] = '#ffffff'
+        plt.rcParams['xtick.color'] = '#ffffff'
+        plt.rcParams['ytick.color'] = '#ffffff'
+        
+        # Downsized text allocations to prevent collision on window minimize actions
+        plt.rcParams['font.size'] = 7.5
+        plt.rcParams['axes.labelsize'] = 6.8     # <-- SHRINKS THE Baseline X-AXIS LABELS PERFECTLY
+        plt.rcParams['xtick.labelsize'] = 8.0
+        plt.rcParams['ytick.labelsize'] = 8.0
+        plt.rcParams['figure.autolayout'] = True
+        
+        # Generate the figures
         fig_summary = plot_summary(shap_vals, X_sample_processed)
-        
-        # Plot 3: Mean SHAP Bar Chart
         fig_bar = plot_mean_bar(shap_vals, X_sample_processed)
         
-        # Plot 4: Feature Dependence Plot (Age)
+        # --- FIX 3: FORCE EXACT DPI & INCH MATRIX SIZES ---
+        # A 6x4 inch canvas map at 100 DPI outputs exactly 600x400 pixels, perfectly matching Plotly
+        for fig in [fig_summary, fig_bar]:
+            if fig is not None:
+                fig.set_size_inches(6.0, 4.0)
+                fig.set_dpi(100)
+                for ax in fig.get_axes():
+                    ax.set_facecolor('#090d16')
+                    ax.tick_params(colors='#ffffff', which='both', labelsize=8.0)
+                    plt.setp(ax.get_yticklabels(), color='#ffffff', fontsize=8.0)
+                    plt.setp(ax.get_xticklabels(), color='#ffffff', fontsize=8.0)
+                    
+                    # FORCE EXPLICIT MICRO SIZING FOR X-AXIS SHAP DESCRIPTION LABELS
+                    ax.xaxis.label.set_size(6.8)  # <-- Overrides native package string overrides
+                    ax.yaxis.label.set_size(8.0)  # Keeps Y-axis description matching feature sizes
+                    ax.xaxis.label.set_color('#ffffff')
+                    ax.yaxis.label.set_color('#ffffff')
+                
+                if len(fig.get_axes()) >= 2:
+                    cb_ax = fig.get_axes()[-1]
+                    cb_ax.yaxis.label.set_size(7.0)
+                    cb_ax.yaxis.label.set_color('#ffffff')
+                    cb_ax.tick_params(labelcolor='#ffffff', colors='#ffffff', labelsize=7.5)
+        
         fig_display = X_sample_processed.copy()
-        if "age" in df_sample.columns:
-            fig_display["age"] = df_sample.loc[fig_display.index, "age"]
-            fig_dependence = plot_dependence("age", shap_vals, fig_display) 
+        
+        if "Age" in fig_display.columns:
+            fig_dependence = plot_dependence("Age", shap_vals, fig_display) 
         else:
             fallback_feat = X_sample_processed.columns[0]
             fig_dependence = plot_dependence(fallback_feat, shap_vals, fig_display)
 
+        if fig_dependence is not None:
+            fig_dependence.set_size_inches(7.5, 5.0) # Matches identical aspect footprint
+            for ax in fig_dependence.get_axes():
+                ax.set_facecolor('#090d16')
+                ax.tick_params(colors='#ffffff', which='both', labelsize=8.5)
+                plt.setp(ax.get_yticklabels(), color='#ffffff', fontsize=8.5)
+                plt.setp(ax.get_xticklabels(), color='#ffffff', fontsize=8.5)
+                ax.xaxis.label.set_color('#ffffff')
+                ax.yaxis.label.set_color('#ffffff')
+                
         st.markdown("<hr>", unsafe_allow_html=True)
         
         # --- ROW 1 ---
         col_row1_left, col_row1_right = st.columns(2)
-        
         with col_row1_left:
             st.subheader("Top 15 Global Features")
+            # Adjusted height within the chart declaration to standard dimensions
+            fig_glob.update_layout(height=450, margin=dict(l=20, r=20, t=30, b=40))
             st.plotly_chart(fig_glob, use_container_width=True)
-            st.info("""
-**What this shows:** This chart shows which features most affect churn predictions. Longer bars mean the feature has a bigger impact.
-""")
             
         with col_row1_right:
             st.subheader("Feature Distributions (Beeswarm)")
-            st.pyplot(fig_summary)
-            st.info("""
-            **What this shows:** Every dot represents a single customer sample. 
-            * **Position (X-Axis):** Dots on the right push risk UP (higher churn); dots on the left pull risk DOWN.
-            * **Color:** Red represents high values of that feature, blue represents low values.
-            """)
+            # bbox_inches='tight' clips out any default ghost white margins on render
+            st.pyplot(fig_summary, bbox_inches='tight')
             
-        # --- ROW 2 ---
-        st.markdown("<br>", unsafe_allow_html=True) 
-        col_row2_left, col_row2_right = st.columns(2)
+        # Clear spatial structural row buffer 
+        st.markdown("<br><br>", unsafe_allow_html=True) 
         
+        # --- ROW 2 ---
+        col_row2_left, col_row2_right = st.columns(2)
         with col_row2_left:
             st.subheader("Mean SHAP Importance")
-            st.pyplot(fig_bar)
-            st.info("""
-**What this shows:** How strong each feature is in influencing churn. Bigger values mean more impact.
-""")
-            
+            st.pyplot(fig_bar, bbox_inches='tight')
         with col_row2_right:
             st.subheader("Feature Dependence (Age)")
-            st.pyplot(fig_dependence)
-            st.info("""
-            **What this shows:** This highlights how the customer's exact age correlates to churn behavior. 
-            The Y-axis represents the SHAP risk impact. If you see the plot dip below 0 at certain ages, 
-            it indicates specific age bands that are mathematically more loyal to the network.
-            """)
+            st.pyplot(fig_dependence, bbox_inches='tight')
 
-# ----------------- MODE 2: CUSTOMER REGISTRY -----------------
+        # Global column padding stabilization
+        st.markdown("""
+        <style>
+            div[data-testid="column"] {
+                padding-left: 20px !important;
+                padding-right: 20px !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
 elif app_mode == "Customer List":
-    st.subheader("📋 Customer List")
-    st.markdown("Search, filter, and review the risk profiles of all uploaded subscriber records.")
     
+    st.subheader("📋 Customer List")
     if len(filtered_df) == 0:
         st.warning("No customers match the active filters.")
     else:
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            risk_filter = st.multiselect(
-                "Filter by Risk Level",
-                options=["🔴 Critical", "⚠️ Elevated", "🟢 Low"],
-                default=["🔴 Critical", "⚠️ Elevated", "🟢 Low"]
-            )
+            risk_filter = st.multiselect("Filter by Risk Level", options=["🔴 Critical", "⚠️ Elevated", "🟢 Low"], default=["🔴 Critical", "⚠️ Elevated", "🟢 Low"])
         with col_f2:
             search_id = st.text_input("Search by Customer ID", "")
         
@@ -815,31 +689,19 @@ elif app_mode == "Customer List":
         if search_id:
             display_df = display_df[display_df["customer_id"].astype(str).str.contains(search_id, case=False)]
         
-        cols_to_show = ["customer_id", "Risk Level", "Risk Score (%)", "age", "gender", "province", 
-                        "tenure_days", "avg_recharge_amount_npr", "num_complaints_30d", "inactive_days"]
+        cols_to_show = ["customer_id", "Risk Level", "Risk Score (%)", "age", "gender", "province", "tenure_days", "avg_recharge_amount_npr", "num_complaints_30d", "inactive_days"]
         if "churn" in display_df.columns:
             cols_to_show.append("churn")
             
-        st.dataframe(
-            display_df[cols_to_show].sort_values(by="Risk Score (%)", ascending=False),
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(display_df[cols_to_show].sort_values(by="Risk Score (%)", ascending=False), use_container_width=True, hide_index=True)
 
-# ----------------- MODE 3: INDIVIDUAL RISK EXPLAINER -----------------
 elif app_mode == "Customer Details":
     st.subheader("Customer Details")
-    
     if len(filtered_df) == 0:
         st.warning("No customers match the active filters. Reset filters on the sidebar to explore.")
     else:
-        selected_cust_id = st.selectbox(
-            "Select Customer ID to Analyze",
-            filtered_df["customer_id"].values
-        )
-        
+        selected_cust_id = st.selectbox("Select Customer ID to Analyze", filtered_df["customer_id"].values)
         customer_row = filtered_df[filtered_df["customer_id"] == selected_cust_id]
-
         col_detail1, col_detail2 = st.columns([1, 2])
         
         with col_detail1:
@@ -892,7 +754,6 @@ elif app_mode == "Customer Details":
             contributions = explanation["contributions"]
             
         col_pred1, col_pred2 = st.columns([1, 1])
-        
         with col_pred1:
             st.subheader("Risk Score Dial")            
             gauge_fig = go.Figure(go.Indicator(         
@@ -901,24 +762,18 @@ elif app_mode == "Customer Details":
                 domain={'x': [0, 1], 'y': [0, 1]},
                 gauge={
                     'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#f8fafc"},
-                    'bar': {'color': "#D32F2F" if prob > 0.7 else ("#EF6C00" if prob > 0.3 else "#2E7D32")},
-                    'bgcolor': "#1e293b",
+                    'bar': {'color': "#dc143c" if prob > 0.7 else ("#EF6C00" if prob > 0.3 else "#003893")},
+                    'bgcolor': "#0f172a",
                     'borderwidth': 1,
-                    'bordercolor': "#334155",
+                    'bordercolor': "#1e293b",
                     'steps': [
-                        {'range': [0, 30], 'color': 'rgba(46, 125, 50, 0.15)'},
+                        {'range': [0, 30], 'color': 'rgba(0, 56, 147, 0.15)'},
                         {'range': [30, 70], 'color': 'rgba(239, 108, 0, 0.15)'},
-                        {'range': [70, 100], 'color': 'rgba(211, 47, 47, 0.15)'}
+                        {'range': [70, 100], 'color': 'rgba(220, 20, 60, 0.15)'}
                     ]
                 }
             ))
-            gauge_fig.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                height=260,
-                margin=dict(l=30, r=30, t=30, b=30)
-            )
+            gauge_fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260, margin=dict(l=30, r=30, t=30, b=30))
             st.plotly_chart(gauge_fig, use_container_width=True)
             
             actual_churn = customer_row["churn"].values[0]
@@ -933,11 +788,17 @@ elif app_mode == "Customer Details":
 
         with col_pred2:
             st.markdown("### 🧠 Explainable AI: SHAP Contributions")
-            st.markdown("Features pushing the risk **UP** are in Red 🔴; features holding it **DOWN** are in Green 🟢.")
+            st.markdown("Features pushing simulated risk **UP** are styled in Crimson 🔴; mitigating features are in Dark Blue 🔵.")
+            
             local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
+            if hasattr(local_shap_fig, "update_traces"):
+                local_shap_fig.update_traces(marker_color=np.where(contributions.head(8)["SHAP_Value"] > 0, "#dc143c", "#003893"))
             st.plotly_chart(local_shap_fig, use_container_width=True)
 
             st.subheader("Prediction Path (Waterfall Plot)")
+            # Set styles for local waterfall context
+            plt.style.use('dark_background')
+            plt.rcParams['figure.facecolor'] = '#0a192f'
             fig_waterfall = plot_waterfall(explanation["shap_values_obj"], None, max_display=8)
             st.pyplot(fig_waterfall)
 
@@ -961,15 +822,13 @@ elif app_mode == "Customer Details":
             else:
                 st.markdown("No significant mitigating factors identified.")
 
-# ----------------- MODE 4: WHAT-IF SIMULATOR -----------------
 elif app_mode == "Simulator":
-    st.subheader("🧪 Simulator")
-    st.markdown("Manually input subscriber details below to calculate real-time churn risk and see customized SHAP feature contributions.")
+    st.subheader("🔮 What-If Simulator")
+    st.markdown("Manually input subscriber details below to calculate real-time churn risk.")
     
     col_sim_in1, col_sim_in2, col_sim_in3 = st.columns(3)
-    
     with col_sim_in1:
-        st.markdown("#### 👤 Demographics")
+        st.markdown("#### 👥 Demographics")
         sim_age = st.slider("Age", 18, 80, 35)
         sim_gender = st.selectbox("Gender ", ["Male", "Female", "Other"])
         sim_province = st.selectbox("Province ", ["Koshi", "Madhesh", "Bagmati", "Gandaki", "Lumbini", "Karnali", "Sudurpashchim"])
@@ -984,7 +843,7 @@ elif app_mode == "Simulator":
         sim_roaming = st.checkbox("Roaming Active", value=False)
 
     with col_sim_in2:
-        st.markdown("#### 📱 Usage Activity")
+        st.markdown("#### 📈 Usage Activity")
         sim_calls = st.slider("Calls Last 30d (Minutes)", 0.0, 1200.0, 250.0)
         sim_sms = st.slider("SMS Last 30d (Count)", 0, 300, 30)
         sim_data = st.slider("Data Last 30d (GB)", 0.0, 150.0, 10.0)
@@ -1047,45 +906,39 @@ elif app_mode == "Simulator":
         contributions = explanation["contributions"]
 
     col_sim_res1, col_sim_res2 = st.columns([1, 1])
-    
     with col_sim_res1:
         st.markdown("### 🧭 Simulated Risk Score Dial")
-        
         gauge_fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=prob * 100,
             domain={'x': [0, 1], 'y': [0, 1]},
             gauge={
                 'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#f8fafc"},
-                'bar': {'color': "#D32F2F" if prob > 0.7 else ("#EF6C00" if prob > 0.3 else "#2E7D32")},
-                'bgcolor': "#1e293b",
+                'bar': {'color': "#dc143c" if prob > 0.7 else ("#EF6C00" if prob > 0.3 else "#003893")},
+                'bgcolor': "#0f172a",
                 'borderwidth': 1,
-                'bordercolor': "#334155",
+                'bordercolor': "#1e293b",
                 'steps': [
-                    {'range': [0, 30], 'color': 'rgba(46, 125, 50, 0.15)'},
+                    {'range': [0, 30], 'color': 'rgba(0, 56, 147, 0.15)'},
                     {'range': [30, 70], 'color': 'rgba(239, 108, 0, 0.15)'},
-                    {'range': [70, 100], 'color': 'rgba(211, 47, 47, 0.15)'}
+                    {'range': [70, 100], 'color': 'rgba(220, 20, 60, 0.15)'}
                 ]
             }
         ))
-        gauge_fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            height=260,
-            margin=dict(l=30, r=30, t=30, b=30)
-        )
+        gauge_fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260, margin=dict(l=30, r=30, t=30, b=30))
         st.plotly_chart(gauge_fig, use_container_width=True)
         
         if prob > 0.7:
-            st.error("🔴 **CRITICAL CHURN RISK (SIMULATED)**: Subscriber is highly likely to churn. Recommend immediate outreach.")
+            st.error("🔴 **CRITICAL CHURN RISK (SIMULATED)**: Subscriber is highly likely to churn.")
         elif prob > 0.3:
-            st.warning("⚠️ **ELEVATED CHURN RISK (SIMULATED)**: Moderate churn probability. Monitor indicators and send special bundle packs.")
+            st.warning("⚠️ **ELEVATED CHURN RISK (SIMULATED)**: Moderate churn probability.")
         else:
-            st.success("🟢 **LOW CHURN RISK (SIMULATED)**: Healthy profile. Low churn probability.")
+            st.success("🟢 **LOW CHURN RISK (SIMULATED)**: Healthy profile.")
 
     with col_sim_res2:
         st.markdown("### 🧠 Explainable AI: SHAP Contributions")
-        st.markdown("Features pushing simulated risk **UP** are in Red 🔴; features holding it **DOWN** are in Green 🟢.")
+        st.markdown("Features pushing simulated risk **UP** are styled in Crimson 🔴; mitigating features are in Dark Blue 🔵.")
         local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
+        if hasattr(local_shap_fig, "update_traces"):
+            local_shap_fig.update_traces(marker_color=np.where(contributions.head(8)["SHAP_Value"] > 0, "#dc143c", "#003893"))
         st.plotly_chart(local_shap_fig, use_container_width=True)
