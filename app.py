@@ -3,12 +3,12 @@ import sys
 import platform
 import collections
 
-# Set thread limits for OpenBLAS, MKL, OMP to prevent hangs on Windows
+# Prevent Windows-specific thread hangs across core numeric libraries
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
-# Mock platform.uname and platform.machine to bypass slow/hanging system queries on Windows
+# Standard mock to bypass slow system queries on certain Windows environments
 UName = collections.namedtuple('uname_result', ['system', 'node', 'release', 'version', 'machine', 'processor'])
 platform.uname = lambda: UName('Windows', 'node', '10', '10.0', 'AMD64', 'Intel')
 platform.machine = lambda: 'AMD64'
@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 # pyrefly: ignore [missing-import]
 from streamlit_option_menu import option_menu
 
-# Import custom explainability and plotting modules
 from src.explainability import ChurnExplainer, plot_dependence, plot_local_shap, plot_mean_bar, plot_summary, plot_waterfall
 from src.preprocessing import NUMERICAL_COLS, CATEGORICAL_COLS, BINARY_COLS
 from src.components.navigation import render_navigation
@@ -32,82 +31,127 @@ from src.components.report_generator import generate_report_pdf
 from src.utils.excel_export import export_excel
 import src.components.style as style
 
-# Page Config
+# Initialize application layout and page parameters
 st.set_page_config(
     page_title="Telecom Churn Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Premium Custom CSS Styling (Crimson, Dark Blue, and White over Deep Midnight Canvas)
+import base64
+
+def get_base64_of_bin_file(bin_file):
+    with open(bin_file, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+def set_app_background(image_path, overlay_opacity=0.88):
+    """
+    Renders a local image asset behind the application layout canvas 
+    using a base64 string embedding combined with a dark gradient layer.
+    """
+    if not os.path.exists(image_path):
+        return
+    b64 = get_base64_of_bin_file(image_path)
+    ext = image_path.split(".")[-1]
+    st.markdown(f"""
+    <style>
+    .stApp::before {{
+        content: "";
+        position: fixed;
+        top: 60px;
+        left: 0;
+        width: 90%;
+        height: 90%;
+        background-image:
+            linear-gradient(180deg, rgba(9,13,22,{overlay_opacity}) 0%, rgba(9,13,22,{overlay_opacity}) 100%),
+            url("data:image/{ext};base64,{b64}");
+        background-size: cover;
+        background-position: center center;
+        background-repeat: no-repeat;
+        opacity: 0.90; 
+        z-index: -1;
+    }}
+    
+    .stApp {{
+        background-color: transparent !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+# Apply mapping asset as background layout base
+set_app_background("assets//Nepal map(1).png", overlay_opacity=0.88)
+
+# Inject custom global theme styles for dashboard panels, typography, and select elements
 st.markdown("""
 <style>
-    /* Main application background and default text */
     .stApp {
-        background-color: #090d16 !important;
         color: #f1f5f9 !important;
     }
     
-    /* Clean block structure overrides */
     div[data-testid="stVerticalBlock"] > div {
         background-color: transparent;
     }
-    
-   /* Premium KPI Summary & Data Presentation Cards */
-    .metric-card {
-        background-color: #0a192f !important;
-        border: 1px solid #172a45 !important;
-        border-left: 4px solid #dc143c !important; /* Crimson Left Highlight Border */
-        border-radius: 8px;
-        padding: 10px 14px; 
-        
-        /* Centering text inside the box */
-        text-align: center; /* <-- ADDED: Centers all values and labels perfectly */
-        
-        /* Width and alignment spacing overrides */
-        width: 100%;         /* <-- UPDATED: Controls width relative to column slot */
-        max-width: 190px;   /* <-- UPDATED: Restricts maximum card stretching width */
-        margin: 0;     /* Aligns cards nicely within their native layouts */
-        
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
-        margin-bottom: 12px;
-        transition: transform 0.2s ease, border-color 0.2s ease;
+
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #0d1b2e !important;
+        border: 1px solid #1e2d45 !important;
+        border-radius: 10px !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+        padding: 4px 8px 14px 8px !important;
+        margin-bottom: 14px;
     }
-    
-    .metric-card:hover {
-        border-color: #dc143c !important;
-        transform: translateY(-2px);
-    }
-    
-    .metric-value {
-        font-size: 1.6rem; 
-        font-weight: 700;
+
+    .chart-box-title {
         color: #ffffff !important;
-        line-height: 1.2;
-    }
-    
-    .metric-label {
-        font-size: 0.75rem; 
-        color: #94a3b8 !important;
+        font-size: 0.95rem;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-top: 2px;
-        display: block;    /* Ensures text layout alignment behaviors remain block-centered */
+        letter-spacing: 0.04em;
+        text-align: center;
+        padding: 8px 0 2px 0;
+        margin-bottom: 2px;
     }
     
-    /* Form Dropdown & Element styling overrides */
+    .telemetry-row-container {
+        margin-bottom: 20px !important;
+        padding: 0px !important;
+    }
+
+    .telemetry-text-wrapper {
+        text-align: center !important;
+        width: 100% !important;
+        display: block;
+    }
+
+    .telemetry-title {
+        color: #ffffff !important;
+        font-size: 0.85rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.05em !important;
+        margin-bottom: 2px !important;
+        text-align: center !important;
+    }
+    
+    .telemetry-subtitle {
+        color: #94a3b8 !important;
+        font-size: 0.75rem !important;
+        font-weight: 500 !important;
+        margin-top: 0px !important;
+        text-align: center !important;
+    }
+    
     div[data-baseweb="select"], div[data-baseweb="input"] {
         background-color: #0f172a !important;
         border-radius: 6px;
     }
     
-    /* Global Section Breaks */
     hr {
         border-color: #1e293b !important;
         margin: 2rem 0;
     }
 
-    /* Customizing fallback text and elements */
     h1, h2, h3, h4, h5, h6 {
         color: #ffffff !important;
         font-weight: 700 !important;
@@ -115,7 +159,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Helper functions for cached loading
+from contextlib import contextmanager
+
+@contextmanager
+def chart_card(title=None):
+    """Context manager to render content blocks inside styled bordered container wrappers."""
+    with st.container(border=True):
+        if title:
+            st.markdown(f'<div class="chart-box-title">{title}</div>', unsafe_allow_html=True)
+        yield
+
+# Resource and data loading handlers using cached workflows
 @st.cache_data
 def load_dataset(file_path):
     if not os.path.exists(file_path):
@@ -138,6 +192,7 @@ def load_model_metrics(metrics_path="models/metrics.json"):
         return json.load(f)
 
 def get_human_readable_reasons(contributions, top_n=3, mode="risk"):
+    """Translates raw SHAP feature importance strings into human-interpretable statements."""
     reasons = []
     if mode == "risk":
         filtered = contributions[contributions["SHAP_Value"] > 0].copy()
@@ -206,7 +261,7 @@ def compute_uploaded_global_shap(uploaded_df_raw, _explainer_instance):
     shap_vals, importance_df = _explainer_instance.get_global_explanations(X_sample)
     return shap_vals, importance_df, X_sample, len(X_sample)
 
-# Load models and explainer
+# Core pipeline initialization verification check
 explainer = load_explainer()
 metrics_data = load_model_metrics()
 
@@ -227,6 +282,7 @@ REQUIRED_RAW_FEATURES = [
 ]
 
 def process_and_store_uploaded_data(uploaded_df_raw, filename):
+    """Validates missing columns, parses features, generates predictions, and maps session state metrics."""
     missing_cols = [col for col in REQUIRED_RAW_FEATURES if col not in uploaded_df_raw.columns]
     if missing_cols:
         return missing_cols
@@ -252,108 +308,172 @@ def process_and_store_uploaded_data(uploaded_df_raw, filename):
     st.session_state.uploaded_filename = filename
     return None
 
-st.title("📊 Nepal Telecom Churn Dashboard")
-st.markdown("Developed Automated Customer Churn Prediction System Using Machine Learning and Explainable AI (SHAP)")
+# Render main interface header components
+col1, col2, col3 = st.columns([1, 8, 1])
 
+with col1:
+    st.image("assets/Nepal flag(2).png", width=220)
+
+with col2:
+    st.markdown("""
+    <h1 style="
+        text-align:center;
+        color:white;
+        font-size:42px;
+        font-weight:800;
+        margin-top:15px;
+        margin-bottom:15px;">
+        TELECOM CHURN PREDICTION DASHBOARD
+    </h1>
+    """, unsafe_allow_html=True)
+
+with col3:
+   st.image("assets/Nepal flag(2).png", width=220)
+
+# Entrypoint view for uninitialized file uploads and schema layout review
 if "uploaded_df" not in st.session_state:
     st.markdown("<hr>", unsafe_allow_html=True)
-    st.subheader("📤 Get Started: Upload Your Dataset")
     
-    col_upload, col_template = st.columns([2, 1])
+    col_upload_side, col_template = st.columns([1.1, 1])
     
     with col_template:
-        st.markdown("### 📋 Required Columns")
-        st.code("""
-- Demographic: age, gender, province, district_type
-- SIM info: sim_type, tenure_days
-- Usage info: calls_min_30d, sms_count_30d, data_gb_30d
-- Network info: signal_strength_dbm, call_drop_rate, avg_data_speed_mbps
-- Recharges: avg_recharge_amount_npr, recharge_count_30d, last_recharge_days_ago
-- Active Services: data_pack_active, voice_pack_active, vas_active, roaming_active
-- Customer Experience: num_complaints_30d, avg_resolution_time_hours
-- Trends: usage_drop_pct, recharge_drop_pct, inactive_days
-- (Optional): customer_id, churn
-        """, language="text")
+        st.markdown("""
+        <div style='padding: 10px 0px;'>
+            <h2 style='color: #ffffff; margin-bottom: 5px; font-size: 1.8rem;'>⚙️ Data Preparation Engine</h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("📋 View Expected Dataset Schema & Features", expanded=True):
+            st.markdown("""
+            <p style='color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px;'>Your input dataset must include the following features to align with the underlying predictive ML model:</p>
+            <ul style='color: #f1f5f9; font-size: 0.85rem; line-height: 1.6; list-style-type: disc; padding-left: 20px;'>
+                <li><strong>Demographic:</strong> <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>age</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>gender</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>province</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>district_type</code></li>
+                <li><strong>SIM Setup:</strong> <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>sim_type</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>tenure_days</code></li>
+                <li><strong>Usage (30 days):</strong> <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>calls_min_30d</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>sms_count_30d</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>data_gb_30d</code></li>
+                <li><strong>Network Health:</strong> <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>signal_strength_dbm</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>call_drop_rate</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>avg_data_speed_mbps</code></li>
+                <li><strong>Recharge Profile:</strong> <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>avg_recharge_amount_npr</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>recharge_count_30d</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>last_recharge_days_ago</code></li>
+                <li><strong>Active Value-Adds:</strong> <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>data_pack_active</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>voice_pack_active</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>vas_active</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>roaming_active</code></li>
+                <li><strong>Customer Care:</strong> <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>num_complaints_30d</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>avg_resolution_time_hours</code></li>
+                <li><strong>Activity Shifts:</strong> <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>usage_drop_pct</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>recharge_drop_pct</code>, <code style='color: #38bdf8; background: #0f172a; padding: 2px 4px; border-radius: 4px;'>inactive_days</code></li>
+            </ul>
+            <p style='color: #64748b; font-size: 0.8rem; font-style: italic; margin-top: 8px;'>Optional Columns: customer_id, churn</p>
+            """, unsafe_allow_html=True)
         
         DATA_PATH = "data/telecom_churn_nepal.csv"
         df_demo = load_dataset(DATA_PATH)
+        
         if df_demo is not None:
-            sample_df = df_demo.copy()
-            if "churn" in sample_df.columns:
-                sample_df = sample_df.drop(columns=["churn"])
-            sample_csv_data = sample_df.head(10).to_csv(index=False)
-            st.download_button(
-                label="📥 Download CSV Template",
-                data=sample_csv_data,
-                file_name="nepal_telecom_churn_template.csv",
-                mime="text/csv"
-            )
-            
-            st.markdown("---")
-            if st.button("🚀 Load Demo Dataset"):
-                errors = process_and_store_uploaded_data(df_demo, "telecom_churn_nepal_demo.csv")
-                if errors:
-                    st.error(f"Demo dataset is missing columns: {errors}")
-                else:
-                    st.success("Demo data loaded!")
-                    st.rerun()
+            col_dl_btn, col_demo_btn = st.columns(2)
+            with col_dl_btn:
+                sample_df = df_demo.copy()
+                if "churn" in sample_df.columns:
+                    sample_df = sample_df.drop(columns=["churn"])
+                sample_csv_data = sample_df.head(10).to_csv(index=False)
+                st.download_button(
+                    label="📥 Download CSV Template",
+                    data=sample_csv_data,
+                    file_name="nepal_telecom_churn_template.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            with col_demo_btn:
+                if st.button("🚀 Load Demo Dataset", use_container_width=True):
+                    errors = process_and_store_uploaded_data(df_demo, "telecom_churn_nepal_demo.csv")
+                    if errors:
+                        st.error(f"Demo dataset is missing columns: {errors}")
+                    else:
+                        st.success("Demo data loaded!")
+                        st.rerun()
         else:
-            st.info("Run `python src/data_generator.py` to generate the demo dataset.")
+            st.info("Demo CSV file not found at 'data/telecom_churn_nepal.csv'. Run `python src/data_generator.py` to create it.")
             
-    with col_upload:
-        st.markdown("### 📤 Drag and Drop CSV")
-        uploaded_file = st.file_uploader("Upload CSV file containing subscriber records", type=["csv"])
-        if uploaded_file is not None:
-            try:
-                uploaded_df_raw = pd.read_csv(uploaded_file)
-                errors = process_and_store_uploaded_data(uploaded_df_raw, uploaded_file.name)
-                if errors:
-                    st.error("Missing required columns:")
-                    st.write(errors)
-                else:
-                    st.success(f"Processed {len(uploaded_df_raw)} records.")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Failed to process CSV: {e}")
+    with col_upload_side:
+        st.markdown("""
+        <div style='padding: 10px 0px;'>
+            <h2 style='color: #ffffff; margin-bottom: 5px; font-size: 1.8rem;'>📥 Customer Retention Workbench</h2>
+            <p style='color: #94a3b8; font-size: 1rem;'>Analyze active subscriber cohorts, evaluate real-time churn risk metrics, and simulate retention scenarios to protect recurring revenue.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            st.markdown("<div style='padding: 10px;'>", unsafe_allow_html=True)
+            st.markdown("### 🗂️ Drag and Drop CSV")
+            uploaded_file = st.file_uploader(
+                "Upload CSV file containing subscriber records", 
+                type=["csv"],
+                label_visibility="collapsed"
+            )
+            st.markdown("<p style='color: #64748b; font-size: 0.8rem; margin-top: 8px;'>⚠️ Max file size limit: 200MB per file. Formats accepted: standard comma-separated .csv</p>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            if uploaded_file is not None:
+                try:
+                    uploaded_df_raw = pd.read_csv(uploaded_file)
+                    errors = process_and_store_uploaded_data(uploaded_df_raw, uploaded_file.name)
+                    if errors:
+                        st.error("Missing required columns:")
+                        st.write(errors)
+                    else:
+                        st.success(f"Processed {len(uploaded_df_raw)} records.")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to process CSV: {e}")
+                    
         if "uploaded_df" not in st.session_state:
             st.stop()
 
+# Initialize primary navigation bar component styling and navigation options
 app_mode = option_menu(
     menu_title=None,
     options=["Overview", "Customer List", "Customer Details", "Simulator"],
-    icons=["bar-chart-line-fill", "table", "search", "cpu"],
+    icons=["bar-chart-line-fill", "table", "search", "sliders"],
     default_index=0,
     orientation="horizontal",
     styles={
         "container": {
-            "padding": "12px 0px", 
-            "background-color": "#0f172a", 
-            "border-radius": "6px",
-            "border": "1px solid #1e293b"
+            "padding": "4px 8px !important", 
+            "background-color": "rgba(20, 20, 25, 0.45) !important", 
+            "backdrop-filter": "blur(20px) saturate(120%) !important",
+            "-webkit-backdrop-filter": "blur(20px) saturate(120%) !important",
+            "border-radius": "12px !important",
+            "border": "1px solid rgba(255, 255, 255, 0.06) !important",
+            "box-shadow": "0px 8px 24px rgba(0, 0, 0, 0.3) !important",
+            "margin-bottom": "25px !important",
+            "display": "flex !important",
+            "justify-content": "space-around !important"
         },
         "icon": {
-            "color": "#ffffff", 
-            "font-size": "14px"
+            "color": "#64748b !important", 
+            "font-size": "14px !important",
+            "transition": "color 0.2s ease !important"
         }, 
         "nav-link": {
-            "font-size": "14px", 
-            "text-align": "center", 
-            "margin": "0px 15px", 
-            "color": "#94a3b8",             
-            "font-weight": "500",
-            "border-radius": "50px",        
-            "--hover-color": "#1e293b"      
+            "font-size": "13px !important", 
+            "text-align": "center !important", 
+            "padding": "10px 20px !important",
+            "color": "#64748b !important",             
+            "font-weight": "700 !important",
+            "text-transform": "uppercase !important",
+            "letter-spacing": "0.06em !important",
+            "border-radius": "8px !important",        
+            "background-color": "transparent !important",
+            "border-bottom": "2px solid transparent !important",
+            "transition": "all 0.2s ease !important",
+            "--hover-color": "rgba(225, 29, 72, 0.05) !important"
         },
         "nav-link-selected": {
-            "background-color": "#f90d3d",
-            "color": "#ffffff",             
-            "font-weight": "600",
-            "border-radius": "50px",        
-            "box-shadow": "0px 0px 12px rgba(220, 20, 60, 0.4)" 
+            "background": "rgba(225, 29, 72, 0.1) !important",  
+            "border-bottom": "2px solid #e11d48 !important", 
+            "color": "#ffffff !important",             
+            "font-weight": "700 !important",
+            "border-radius": "8px !important",        
+            "box-shadow": "none !important",            
+            "text-shadow": "none !important"            
         }
     }
 )
 
+# Sync sidebar dropdown filters to unified fallback session states
 if "gender_f" not in st.session_state:
     st.session_state.gender_f = "All"
 if "province_f" not in st.session_state:
@@ -369,29 +489,132 @@ if st.session_state.province_f != "All":
 if st.session_state.sim_f != "All":
     filtered_df = filtered_df[filtered_df["sim_type"] == st.session_state.sim_f]
 
+# Performance KPI Telemetry Ring Matrix Calculations
 if app_mode != "Simulator":
     total_customers = len(filtered_df)
     overall_churn_rate = (filtered_df["churn"].mean() * 100) if total_customers > 0 else 0.0
-    model_accuracy = metrics_data.get("accuracy", 0.85)
+
+    if total_customers > 0 and "churn" in filtered_df.columns:
+        predicted_labels = (filtered_df["churn_probability"] >= 0.5).astype(int)
+        actual_labels = filtered_df["churn"]
+        correct_predictions = (predicted_labels == actual_labels).sum()
+        model_accuracy = correct_predictions / total_customers
+    else:
+        model_accuracy = metrics_data.get("accuracy", 0.85)
 
     high_risk_revenue = 0.0
     if total_customers > 0:
-        high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= 0.5, "avg_recharge_amount_npr"].sum()
+        high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= 0.3, "avg_recharge_amount_npr"].sum()
+
+    st.markdown("""
+        <style>
+            div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] > div:nth-child(2) div[data-testid="stVerticalBlockBorderWithHeader"] {
+                background: rgba(255, 255, 255, 0.14) !important;       
+                background-color: rgba(255, 255, 255, 0.12) !important;  
+                backdrop-filter: blur(25px) saturate(220%) !important;  
+                -webkit-backdrop-filter: blur(25px) saturate(220%) !important;
+                border: 1px solid rgba(255, 255, 255, 0.45) !important; 
+                box-shadow: 0px 14px 32px rgba(0, 0, 0, 0.45) !important;
+                border-radius: 16px !important;                          
+                padding: 24px 16px !important;                           
+            }
+
+            div[data-testid="stForm"] div[data-testid="stVerticalBlockBorderWithHeader"],
+            div[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWithHeader"] {
+                background: transparent !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+                border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                box-shadow: none !important;
+            }
+
+            .stPlotlyChart {
+                background-color: transparent !important;
+                background: transparent !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
     with st.container():
-        st.markdown('<div style="padding: 0 10%;">', unsafe_allow_html=True)
-        
         kpi_cols = st.columns(4, gap="small")
+        
         with kpi_cols[0]:
-            st.markdown(f'<div class="metric-card"><div class="metric-value">{total_customers:,}</div><div class="metric-label">Total Customers</div></div>', unsafe_allow_html=True)
+            with st.container(border=True): 
+                st.markdown('<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Churn Risk Overview</div>', unsafe_allow_html=True)
+                
+                fig1 = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=overall_churn_rate,
+                    number={'suffix': "%", 'font': {'size': 24, 'color': '#ffffff', 'weight': 'bold'}},
+                    gauge={
+                        'axis': {'range': [0, 100], 'visible': False},
+                        'bar': {'color': "#cf0a0a"}, 
+                        'bgcolor': "rgba(255, 255, 255, 0.12)"
+                    },
+                    domain={'x': [0, 1], 'y': [0.15, 1]}
+                ))
+                fig1.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
+                st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
+                st.markdown('<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Observed Segment</div>', unsafe_allow_html=True)
+
         with kpi_cols[1]:
-            st.markdown(f'<div class="metric-card"><div class="metric-value">{overall_churn_rate:.1f}%</div><div class="metric-label">Churn Rate</div></div>', unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown('<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Total Customers</div>', unsafe_allow_html=True)
+                
+                max_base_scale = 5000 if total_customers <= 5000 else (total_customers * 1.5)
+                fig2 = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=total_customers,
+                    number={'valueformat': ",", 'font': {'size': 24, 'color': '#ffffff', 'weight': 'bold'}},
+                    gauge={
+                        'axis': {'range': [0, max_base_scale], 'visible': False},
+                        'bar': {'color': "#2563eb"}, 
+                        'bgcolor': "rgba(255, 255, 255, 0.12)"
+                    },
+                    domain={'x': [0, 1], 'y': [0.15, 1]}
+                ))
+                fig2.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
+                st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
+                st.markdown('<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Active Base</div>', unsafe_allow_html=True)
+
         with kpi_cols[2]:
-            st.markdown(f'<div class="metric-card"><div class="metric-value">{model_accuracy*100:.1f}%</div><div class="metric-label">Model Accuracy</div></div>', unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown('<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Model Accuracy</div>', unsafe_allow_html=True)
+                
+                fig3 = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=model_accuracy * 100,
+                    number={'suffix': "%", 'font': {'size': 24, 'color': '#ffffff', 'weight': 'bold'}},
+                    gauge={
+                        'axis': {'range': [0, 100], 'visible': False},
+                        'bar': {'color': "#cf0a0a"}, 
+                        'bgcolor': "rgba(255, 255, 255, 0.12)"
+                    },
+                    domain={'x': [0, 1], 'y': [0.15, 1]}
+                ))
+                fig3.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
+                st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
+                st.markdown('<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Pipeline Confidence</div>', unsafe_allow_html=True)
+
         with kpi_cols[3]:
-            st.markdown(f'<div class="metric-card"><div class="metric-value">Rs. {high_risk_revenue:,.0f}</div><div class="metric-label">Revenue at Risk</div></div>', unsafe_allow_html=True)
-            
-        st.markdown('</div>', unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown('<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Revenue at Risk</div>', unsafe_allow_html=True)
+                
+                max_rev_scale = 100000 if high_risk_revenue <= 100000 else (high_risk_revenue * 1.5)
+                fig4 = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=high_risk_revenue,
+                    number={'prefix': "Rs. ", 'valueformat': ",.0f", 'font': {'size': 20, 'color': '#ffffff', 'weight': 'bold'}},
+                    gauge={
+                        'axis': {'range': [0, max_rev_scale], 'visible': False},
+                        'bar': {'color': "#2563eb"}, 
+                        'bgcolor': "rgba(255, 255, 255, 0.12)"
+                    },
+                    domain={'x': [0, 1], 'y': [0.15, 1]}
+                ))
+                fig4.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
+                st.plotly_chart(fig4, use_container_width=True, config={'displayModeBar': False})
+                st.markdown('<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">NPR Vulnerable</div>', unsafe_allow_html=True)
         
     overall_summary = {
         "total_customers": total_customers,
@@ -399,11 +622,14 @@ if app_mode != "Simulator":
         "model_accuracy": model_accuracy,
         "high_risk_revenue": high_risk_revenue,
     }
-    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("<div style='padding-top: 5px;'></div>", unsafe_allow_html=True)
 
+# ---------------------------------------------------------------------------
+# MODE: OVERVIEW VIEW
+# ---------------------------------------------------------------------------
 if app_mode == "Overview":
     st.subheader("Overview & Demographics")
-    st.markdown("### 🎛️ Dashboard Controls")
+    st.markdown("###  Dashboard Controls")
     
     meta_col1, meta_col2 = st.columns([2, 1])
     with meta_col1:
@@ -430,8 +656,9 @@ if app_mode == "Overview":
             st.rerun()
             
     st.markdown("---")
-    st.subheader("📊 Generate Executive Reports")
+    st.subheader(" Generate Executive Reports")
 
+    # Re-evaluate session parameters if data filter mappings shift
     if "pdf_report_bytes" not in st.session_state:
         st.session_state.pdf_report_bytes = None
     if "excel_report_bytes" not in st.session_state:
@@ -486,8 +713,9 @@ if app_mode == "Overview":
                 title="Observed Churn Rate by Province (%)",
                 labels={"province": "Province", "churn_pct": "Churn Rate (%)"}
             )
-            fig_prov.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_prov, use_container_width=True)
+            fig_prov.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", title=None)
+            with chart_card("Observed Churn Rate by Province (%)"):
+                st.plotly_chart(fig_prov, use_container_width=True)
 
         with col2:
             corr_cols = [
@@ -506,8 +734,9 @@ if app_mode == "Overview":
                 color_continuous_scale=[[0, '#dc143c'], [0.5, '#ffffff'], [1, '#003893']],
                 title="Correlation Matrix (Key Features & Churn)"
             )
-            fig_corr.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=500)
-            st.plotly_chart(fig_corr, use_container_width=True)
+            fig_corr.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=500, title=None)
+            with chart_card("Correlation Matrix (Key Features & Churn)"):
+                st.plotly_chart(fig_corr, use_container_width=True)
 
         col3, col4 = st.columns(2)
         with col3:
@@ -520,8 +749,9 @@ if app_mode == "Overview":
                 color_discrete_map={"Loyal": "#003893", "Churned": "#dc143c"},
                 opacity=0.7
             )
-            fig_sig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_sig, use_container_width=True)
+            fig_sig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", title=None)
+            with chart_card("Signal Strength (dBm) Distribution by Churn"):
+                st.plotly_chart(fig_sig, use_container_width=True)
             
         with col4:
             has_complaints_df = filtered_df[filtered_df["num_complaints_30d"] > 0]
@@ -536,21 +766,20 @@ if app_mode == "Overview":
                     color_discrete_map={"Loyal": "#003893", "Churned": "#dc143c"},
                     opacity=0.6
                 )
-                fig_comp.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-                st.plotly_chart(fig_comp, use_container_width=True)
+                fig_comp.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", title=None)
+                with chart_card("Complaints Density vs Resolution Time (Hours)"):
+                    st.plotly_chart(fig_comp, use_container_width=True)
             else:
-                st.info("No customer complaints registered in the selected segment to display.")
+                with chart_card():
+                    st.info("No customer complaints registered in the selected segment to display.")
 
-        st.subheader("Global Explanations (AI-Driven Feature Importance)")
+        st.subheader("Global Feature Importance Metrics")
         
         @st.cache_data
         def compute_global_importance_filtered(_explainer, df_sample):       
             X_sample_raw = df_sample.drop(columns=["churn", "customer_id", "churn_probability", "Risk Score (%)", "Risk Level"], errors="ignore")
             X_sample_processed = _explainer.get_preprocessed_df(X_sample_raw)
-            
-            # FIX: Clean the raw processed columns to Title Case BEFORE computing SHAP and plotting
             X_sample_processed.columns = [c.replace("_", " ").title() for c in X_sample_processed.columns]
-            
             shap_vals, importance_df = _explainer.get_global_explanations(X_sample_processed)
             return shap_vals, importance_df, X_sample_processed
 
@@ -573,7 +802,7 @@ if app_mode == "Overview":
         )
         fig_glob.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(autorange="reversed"), height=400)
         
-    # --- FIX 2: SYNCHRONIZE MATPLOTLIB CONFIGS ---
+        # Explicit dark-theme canvas mappings for matplotlib plots
         plt.style.use('dark_background')
         plt.rcParams['figure.facecolor'] = '#090d16'
         plt.rcParams['axes.facecolor'] = '#090d16'
@@ -582,32 +811,27 @@ if app_mode == "Overview":
         plt.rcParams['xtick.color'] = '#ffffff'
         plt.rcParams['ytick.color'] = '#ffffff'
         
-        # Downsized text allocations to prevent collision on window minimize actions
         plt.rcParams['font.size'] = 7.5
-        plt.rcParams['axes.labelsize'] = 6.8     # <-- SHRINKS THE Baseline X-AXIS LABELS PERFECTLY
+        plt.rcParams['axes.labelsize'] = 6.8     
         plt.rcParams['xtick.labelsize'] = 8.0
         plt.rcParams['ytick.labelsize'] = 8.0
         plt.rcParams['figure.autolayout'] = True
         
-        # Generate the figures
         fig_summary = plot_summary(shap_vals, X_sample_processed)
         fig_bar = plot_mean_bar(shap_vals, X_sample_processed)
         
-        # --- FIX 3: FORCE EXACT DPI & INCH MATRIX SIZES ---
-        # A 6x4 inch canvas map at 100 DPI outputs exactly 600x400 pixels, perfectly matching Plotly
         for fig in [fig_summary, fig_bar]:
             if fig is not None:
                 fig.set_size_inches(6.0, 4.0)
                 fig.set_dpi(100)
                 for ax in fig.get_axes():
                     ax.set_facecolor('#090d16')
+                    ax.grid(False)
                     ax.tick_params(colors='#ffffff', which='both', labelsize=8.0)
                     plt.setp(ax.get_yticklabels(), color='#ffffff', fontsize=8.0)
                     plt.setp(ax.get_xticklabels(), color='#ffffff', fontsize=8.0)
-                    
-                    # FORCE EXPLICIT MICRO SIZING FOR X-AXIS SHAP DESCRIPTION LABELS
-                    ax.xaxis.label.set_size(6.8)  # <-- Overrides native package string overrides
-                    ax.yaxis.label.set_size(8.0)  # Keeps Y-axis description matching feature sizes
+                    ax.xaxis.label.set_size(6.8)  
+                    ax.yaxis.label.set_size(8.0)  
                     ax.xaxis.label.set_color('#ffffff')
                     ax.yaxis.label.set_color('#ffffff')
                 
@@ -626,7 +850,7 @@ if app_mode == "Overview":
             fig_dependence = plot_dependence(fallback_feat, shap_vals, fig_display)
 
         if fig_dependence is not None:
-            fig_dependence.set_size_inches(7.5, 5.0) # Matches identical aspect footprint
+            fig_dependence.set_size_inches(7.5, 5.0) 
             for ax in fig_dependence.get_axes():
                 ax.set_facecolor('#090d16')
                 ax.tick_params(colors='#ffffff', which='both', labelsize=8.5)
@@ -637,32 +861,29 @@ if app_mode == "Overview":
                 
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        # --- ROW 1 ---
         col_row1_left, col_row1_right = st.columns(2)
         with col_row1_left:
-            st.subheader("Top 15 Global Features")
-            # Adjusted height within the chart declaration to standard dimensions
             fig_glob.update_layout(height=450, margin=dict(l=20, r=20, t=30, b=40))
-            st.plotly_chart(fig_glob, use_container_width=True)
+            with chart_card("Top 15 Global Features"):
+                st.plotly_chart(fig_glob, use_container_width=True)
             
         with col_row1_right:
-            st.subheader("Feature Distributions (Beeswarm)")
-            # bbox_inches='tight' clips out any default ghost white margins on render
-            st.pyplot(fig_summary, bbox_inches='tight')
+            with chart_card("Feature Distributions (Beeswarm)"):
+                st.pyplot(fig_summary, bbox_inches='tight')
+                plt.close(fig_summary)
             
-        # Clear spatial structural row buffer 
-        st.markdown("<br><br>", unsafe_allow_html=True) 
+        st.markdown("<br>", unsafe_allow_html=True) 
         
-        # --- ROW 2 ---
         col_row2_left, col_row2_right = st.columns(2)
         with col_row2_left:
-            st.subheader("Mean SHAP Importance")
-            st.pyplot(fig_bar, bbox_inches='tight')
+            with chart_card("Mean SHAP Importance"):
+                st.pyplot(fig_bar, bbox_inches='tight')
+                plt.close(fig_bar)
         with col_row2_right:
-            st.subheader("Feature Dependence (Age)")
-            st.pyplot(fig_dependence, bbox_inches='tight')
+            with chart_card("Feature Dependence (Age)"):
+                st.pyplot(fig_dependence, bbox_inches='tight')
+                plt.close(fig_dependence)
 
-        # Global column padding stabilization
         st.markdown("""
         <style>
             div[data-testid="column"] {
@@ -672,9 +893,11 @@ if app_mode == "Overview":
         </style>
         """, unsafe_allow_html=True)
 
+# ---------------------------------------------------------------------------
+# MODE: CUSTOMER LIST VIEW
+# ---------------------------------------------------------------------------
 elif app_mode == "Customer List":
-    
-    st.subheader("📋 Customer List")
+    st.subheader(" Customer List")
     if len(filtered_df) == 0:
         st.warning("No customers match the active filters.")
     else:
@@ -695,6 +918,9 @@ elif app_mode == "Customer List":
             
         st.dataframe(display_df[cols_to_show].sort_values(by="Risk Score (%)", ascending=False), use_container_width=True, hide_index=True)
 
+# ---------------------------------------------------------------------------
+# MODE: CUSTOMER DETAILS VIEW
+# ---------------------------------------------------------------------------
 elif app_mode == "Customer Details":
     st.subheader("Customer Details")
     if len(filtered_df) == 0:
@@ -705,7 +931,7 @@ elif app_mode == "Customer Details":
         col_detail1, col_detail2 = st.columns([1, 2])
         
         with col_detail1:
-            st.markdown("### 📋 Demographic Profile")
+            st.markdown("###  Demographic Profile")
             st.markdown(f"**Customer ID:** `{selected_cust_id}`")
             st.markdown(f"**Age:** {customer_row['age'].values[0]}")
             st.markdown(f"**Gender:** {customer_row['gender'].values[0]}")
@@ -721,7 +947,7 @@ elif app_mode == "Customer Details":
             st.write("Roaming: ", "✅ Yes" if customer_row["roaming_active"].values[0] == 1 else "❌ No")
 
         with col_detail2:
-            st.markdown("### 📊 Usage & Service Quality Metrics")
+            st.markdown("###  Usage & Service Quality Metrics")
             metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
             with metric_col_1:
                 st.metric("Calls Last 30 Days", f"{customer_row['calls_min_30d'].values[0]:.1f} Min")
@@ -736,7 +962,7 @@ elif app_mode == "Customer Details":
                 st.metric("Complaints 30 Days", f"{customer_row['num_complaints_30d'].values[0]}")
                 st.metric("Resolution Time", f"{customer_row['avg_resolution_time_hours'].values[0]:.1f} Hrs")
                 
-            st.markdown("### 📈 Trend Indicators")
+            st.markdown("###  Trend Indicators")
             trend_col_1, trend_col_2, trend_col_3 = st.columns(3)
             with trend_col_1:
                 st.metric("Usage Drop %", f"{customer_row['usage_drop_pct'].values[0]*100:.1f}%")
@@ -787,7 +1013,7 @@ elif app_mode == "Customer Details":
                 st.success("🟢 **LOW CHURN RISK**: Customer demonstrates healthy activity levels.")
 
         with col_pred2:
-            st.markdown("### 🧠 Explainable AI: SHAP Contributions")
+            st.markdown("### Feature Contributions Breakdown")
             st.markdown("Features pushing simulated risk **UP** are styled in Crimson 🔴; mitigating features are in Dark Blue 🔵.")
             
             local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
@@ -796,13 +1022,13 @@ elif app_mode == "Customer Details":
             st.plotly_chart(local_shap_fig, use_container_width=True)
 
             st.subheader("Prediction Path (Waterfall Plot)")
-            # Set styles for local waterfall context
             plt.style.use('dark_background')
             plt.rcParams['figure.facecolor'] = '#0a192f'
             fig_waterfall = plot_waterfall(explanation["shap_values_obj"], None, max_display=8)
             st.pyplot(fig_waterfall)
+            plt.close(fig_waterfall)
 
-        st.markdown("### 📋 Diagnostic Summary (Key Reasons)")
+        st.markdown("###  Diagnostic Summary (Key Reasons)")
         risk_reasons = get_human_readable_reasons(contributions, top_n=3, mode="risk")
         mitigation_reasons = get_human_readable_reasons(contributions, top_n=3, mode="mitigation")
         
@@ -815,20 +1041,23 @@ elif app_mode == "Customer Details":
             else:
                 st.markdown("No significant positive risk drivers identified.")
         with col_reason2:
-            st.markdown("##### 🛡️ Top Retention Factors (Holding Risk Down)")
+            st.markdown("#####  Top Retention Factors (Holding Risk Down)")
             if mitigation_reasons:
                 for reason in mitigation_reasons:
                     st.markdown(f"- 🟢 {reason}")
             else:
                 st.markdown("No significant mitigating factors identified.")
 
+# ---------------------------------------------------------------------------
+# MODE: SIMULATOR VIEW (WHAT-IF SCENARIOS)
+# ---------------------------------------------------------------------------
 elif app_mode == "Simulator":
-    st.subheader("🔮 What-If Simulator")
+    st.subheader(" What-If Simulator")
     st.markdown("Manually input subscriber details below to calculate real-time churn risk.")
     
     col_sim_in1, col_sim_in2, col_sim_in3 = st.columns(3)
     with col_sim_in1:
-        st.markdown("#### 👥 Demographics")
+        st.markdown("####  Demographics")
         sim_age = st.slider("Age", 18, 80, 35)
         sim_gender = st.selectbox("Gender ", ["Male", "Female", "Other"])
         sim_province = st.selectbox("Province ", ["Koshi", "Madhesh", "Bagmati", "Gandaki", "Lumbini", "Karnali", "Sudurpashchim"])
@@ -836,35 +1065,35 @@ elif app_mode == "Simulator":
         sim_sim = st.selectbox("SIM Type ", ["Prepaid", "Postpaid"])
         sim_tenure = st.slider("Tenure (Days)", 15, 1800, 365)
 
-        st.markdown("#### 📦 Active Services")
+        st.markdown("####  Active Services")
         sim_data_pack = st.checkbox("Data Pack Active", value=True)
         sim_voice_pack = st.checkbox("Voice Pack Active", value=False)
         sim_vas = st.checkbox("VAS (Value Added) Active", value=False)
         sim_roaming = st.checkbox("Roaming Active", value=False)
 
     with col_sim_in2:
-        st.markdown("#### 📈 Usage Activity")
+        st.markdown("####  Usage Activity")
         sim_calls = st.slider("Calls Last 30d (Minutes)", 0.0, 1200.0, 250.0)
         sim_sms = st.slider("SMS Last 30d (Count)", 0, 300, 30)
         sim_data = st.slider("Data Last 30d (GB)", 0.0, 150.0, 10.0)
         sim_night = st.slider("Night Usage %", 0.0, 100.0, 20.0)
         
-        st.markdown("#### 💳 Recharges")
+        st.markdown("####  Recharges")
         sim_last_rech = st.slider("Last Recharge (Days Ago)", 0, 90, 8)
         sim_avg_rech = st.slider("Avg Recharge NPR", 20.0, 2000.0, 250.0)
         sim_rech_count = st.slider("Recharge Count 30d", 0, 20, 3)
 
     with col_sim_in3:
-        st.markdown("#### 🌐 Network Quality")
+        st.markdown("####  Network Quality")
         sim_signal = st.slider("Signal Strength (dBm)", -115, -50, -85)
         sim_drop = st.slider("Call Drop Rate (%)", 0.0, 25.0, 1.2) / 100.0
         sim_speed = st.slider("Avg Data Speed (Mbps)", 0.1, 120.0, 18.0)
         
-        st.markdown("#### 💬 Complaints")
+        st.markdown("####  Complaints")
         sim_complaints = st.slider("Complaints Last 30d", 0, 10, 0)
         sim_resol = st.slider("Avg Resolution Time (Hrs)", 0.0, 120.0, 0.0)
         
-        st.markdown("#### 📈 Account Trends")
+        st.markdown("####  Account Trends")
         sim_usage_drop = st.slider("Usage Drop Last Month (%)", -50.0, 100.0, 5.0) / 100.0
         sim_rech_drop = st.slider("Recharge Drop Last Month (%)", -50.0, 100.0, 0.0) / 100.0
         sim_inactive = st.slider("Inactive Days Last 30d", 0, 30, 2)
@@ -936,7 +1165,7 @@ elif app_mode == "Simulator":
             st.success("🟢 **LOW CHURN RISK (SIMULATED)**: Healthy profile.")
 
     with col_sim_res2:
-        st.markdown("### 🧠 Explainable AI: SHAP Contributions")
+        st.markdown("### Simulated Feature Contributions")
         st.markdown("Features pushing simulated risk **UP** are styled in Crimson 🔴; mitigating features are in Dark Blue 🔵.")
         local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
         if hasattr(local_shap_fig, "update_traces"):
