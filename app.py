@@ -56,28 +56,35 @@ def set_app_background(image_path, overlay_opacity=0.88):
     ext = image_path.split(".")[-1]
     st.markdown(f"""
     <style>
+    /* Full-viewport background image behind everything */
     .stApp::before {{
         content: "";
         position: fixed;
-        top: 60px;
+        top: 0;
         left: 0;
-        width: 90%;
-        height: 90%;
+        width: 100vw;
+        height: 100vh;
         background-image:
             linear-gradient(180deg, rgba(9,13,22,{overlay_opacity}) 0%, rgba(9,13,22,{overlay_opacity}) 100%),
             url("data:image/{ext};base64,{b64}");
         background-size: cover;
         background-position: center center;
         background-repeat: no-repeat;
-        opacity: 0.90; 
         z-index: -1;
     }}
-    
+
+    /* Always use dark background – prevents light-mode white bleed-through */
     .stApp {{
-        background-color: transparent !important;
+        background-color: #090d16 !important;
+    }}
+
+    /* Ensure the Streamlit toolbar area also matches */
+    header[data-testid="stHeader"] {{
+        background-color: rgba(9,13,22,0.95) !important;
     }}
     </style>
     """, unsafe_allow_html=True)
+
 
 # Apply mapping asset as background layout base
 set_app_background("assets//Nepal map(1).png", overlay_opacity=0.88)
@@ -156,8 +163,48 @@ st.markdown("""
         color: #ffffff !important;
         font-weight: 700 !important;
     }
+
+    /* Force option-menu nav to always stay dark */
+    nav[data-testid="stHorizontalBlock"],
+    ul[class*="nav"] {
+        background-color: #0d1b2e !important;
+    }
+
+    /* Force all Streamlit buttons to dark style */
+    .stButton > button {
+        background-color: #1e293b !important;
+        color: #f1f5f9 !important;
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
+    }
+    .stButton > button:hover {
+        background-color: #334155 !important;
+        border-color: #475569 !important;
+    }
+
+    /* Force selectboxes and inputs to dark */
+    div[data-baseweb="select"] * {
+        background-color: #0f172a !important;
+        color: #f1f5f9 !important;
+    }
+    div[data-baseweb="input"] input {
+        background-color: #0f172a !important;
+        color: #f1f5f9 !important;
+    }
+
+    /* Force sidebar always dark */
+    section[data-testid="stSidebar"] {
+        background-color: #0d1b2e !important;
+        color: #f1f5f9 !important;
+    }
+
+    /* Force all paragraph / label text to be light */
+    p, label, span, .stMarkdown {
+        color: #e2e8f0 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
+
 
 from contextlib import contextmanager
 
@@ -300,10 +347,14 @@ def process_and_store_uploaded_data(uploaded_df_raw, filename):
     uploaded_df["Risk Score (%)"] = (probs * 100).round(1)
     uploaded_df["Risk Level"] = np.where(probs >= 0.7, "🔴 Critical", np.where(probs >= 0.3, "⚠️ Elevated", "🟢 Low"))
     
-    if "churn" not in uploaded_df.columns or uploaded_df["churn"].isna().all():
+    if "churn" not in uploaded_df_raw.columns or uploaded_df_raw["churn"].isna().all():
+        # No real ground-truth labels — synthesize from model predictions
         uploaded_df["churn"] = (probs >= 0.5).astype(int)
+        st.session_state.churn_labels_are_real = False
     else:
         uploaded_df["churn"] = uploaded_df["churn"].fillna(0).astype(int)
+        # Real labels present — but flag training data to avoid inflated accuracy
+        st.session_state.churn_labels_are_real = True
         
     st.session_state.uploaded_df = uploaded_df
     st.session_state.uploaded_filename = filename
@@ -360,33 +411,37 @@ if "uploaded_df" not in st.session_state:
             <p style='color: #64748b; font-size: 0.8rem; font-style: italic; margin-top: 8px;'>Optional Columns: customer_id, churn</p>
             """, unsafe_allow_html=True)
         
-        DATA_PATH = "data/nepal_telecom_churn_main.csv"
-        df_demo = load_dataset(DATA_PATH)
-        
-        if df_demo is not None:
-            col_dl_btn, col_demo_btn = st.columns(2)
-            with col_dl_btn:
-                sample_df = df_demo.copy()
-                if "churn" in sample_df.columns:
-                    sample_df = sample_df.drop(columns=["churn"])
-                sample_csv_data = sample_df.head(10).to_csv(index=False)
-                st.download_button(
-                    label="📥 Download CSV Template",
-                    data=sample_csv_data,
-                    file_name="nepal_telecom_churn_template.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-            with col_demo_btn:
-                if st.button("🚀 Load Demo Dataset", use_container_width=True):
-                    errors = process_and_store_uploaded_data(df_demo, "nepal_telecom_churn_main.csv")
-                    if errors:
-                        st.error(f"Demo dataset is missing columns: {errors}")
-                    else:
-                        st.success("Demo data loaded!")
-                        st.rerun()
+        DEMO_CSV_PATH = "data/demo_upload_sample.csv"
+        df_demo_sample = load_dataset(DEMO_CSV_PATH)
+
+        # Download Demo CSV button — always shown if the file exists
+        if df_demo_sample is not None:
+            demo_csv_bytes = df_demo_sample.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Download Demo CSV (50 sample customers)",
+                data=demo_csv_bytes,
+                file_name="demo_upload_sample.csv",
+                mime="text/csv",
+                use_container_width=True,
+                help="Download a ready-made 50-row sample CSV you can upload directly to test the dashboard."
+            )
         else:
-            st.info("Demo CSV file not found at 'data/nepal_telecom_churn_main.csv'.")
+            st.info("Demo CSV not found. Run `python src/data_generator.py` to generate data first.")
+
+        # Load Demo Dataset button — loads the demo sample (not training data)
+        DATA_PATH = "data/nepal_telecom_churn_main.csv"
+        df_train = load_dataset(DATA_PATH)
+
+        if df_demo_sample is not None:
+            if st.button("🚀 Load Demo Dataset", use_container_width=True):
+                errors = process_and_store_uploaded_data(df_demo_sample, "demo_upload_sample.csv")
+                if errors:
+                    st.error(f"Demo dataset is missing columns: {errors}")
+                else:
+                    st.success("Demo data loaded! (50 sample customers)")
+                    st.rerun()
+        elif df_train is not None:
+            st.caption("⚠️ Demo sample CSV not found — using training data as fallback.")
             
     with col_upload_side:
         st.markdown("""
@@ -433,18 +488,16 @@ app_mode = option_menu(
     styles={
         "container": {
             "padding": "4px 8px !important", 
-            "background-color": "rgba(20, 20, 25, 0.45) !important", 
-            "backdrop-filter": "blur(20px) saturate(120%) !important",
-            "-webkit-backdrop-filter": "blur(20px) saturate(120%) !important",
+            "background-color": "#0d1b2e !important",
             "border-radius": "12px !important",
-            "border": "1px solid rgba(255, 255, 255, 0.06) !important",
-            "box-shadow": "0px 8px 24px rgba(0, 0, 0, 0.3) !important",
+            "border": "1px solid rgba(255, 255, 255, 0.08) !important",
+            "box-shadow": "0px 8px 24px rgba(0, 0, 0, 0.5) !important",
             "margin-bottom": "25px !important",
             "display": "flex !important",
             "justify-content": "space-around !important"
         },
         "icon": {
-            "color": "#64748b !important", 
+            "color": "#94a3b8 !important", 
             "font-size": "14px !important",
             "transition": "color 0.2s ease !important"
         }, 
@@ -452,24 +505,24 @@ app_mode = option_menu(
             "font-size": "13px !important", 
             "text-align": "center !important", 
             "padding": "10px 20px !important",
-            "color": "#64748b !important",             
+            "color": "#94a3b8 !important",
             "font-weight": "700 !important",
             "text-transform": "uppercase !important",
             "letter-spacing": "0.06em !important",
-            "border-radius": "8px !important",        
+            "border-radius": "8px !important",
             "background-color": "transparent !important",
             "border-bottom": "2px solid transparent !important",
             "transition": "all 0.2s ease !important",
-            "--hover-color": "rgba(225, 29, 72, 0.05) !important"
+            "--hover-color": "rgba(225, 29, 72, 0.08) !important"
         },
         "nav-link-selected": {
-            "background": "rgba(225, 29, 72, 0.1) !important",  
+            "background": "rgba(225, 29, 72, 0.15) !important",
             "border-bottom": "2px solid #e11d48 !important", 
-            "color": "#ffffff !important",             
+            "color": "#ffffff !important",
             "font-weight": "700 !important",
-            "border-radius": "8px !important",        
-            "box-shadow": "none !important",            
-            "text-shadow": "none !important"            
+            "border-radius": "8px !important",
+            "box-shadow": "none !important",
+            "text-shadow": "none !important"
         }
     }
 )
@@ -495,13 +548,19 @@ if app_mode != "Simulator":
     total_customers = len(filtered_df)
     overall_churn_rate = (filtered_df["churn"].mean() * 100) if total_customers > 0 else 0.0
 
-    if total_customers > 0 and "churn" in filtered_df.columns:
+    # Only compute live accuracy if the uploaded file had *real* ground-truth churn labels.
+    # If churn was synthesized from the model's own predictions, comparing back to those
+    # labels always yields 100% — instead show the stored held-out test-set accuracy.
+    churn_labels_are_real = st.session_state.get("churn_labels_are_real", False)
+    if total_customers > 0 and churn_labels_are_real:
         predicted_labels = (filtered_df["churn_probability"] >= 0.5).astype(int)
         actual_labels = filtered_df["churn"]
         correct_predictions = (predicted_labels == actual_labels).sum()
         model_accuracy = correct_predictions / total_customers
+        accuracy_source = "Uploaded Data"
     else:
         model_accuracy = metrics_data.get("accuracy", 0.85)
+        accuracy_source = "Test Set"
 
     high_risk_revenue = 0.0
     if total_customers > 0:
@@ -595,7 +654,7 @@ if app_mode != "Simulator":
                 ))
                 fig3.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
                 st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
-                st.markdown('<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Pipeline Confidence</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Pipeline Confidence · {accuracy_source}</div>', unsafe_allow_html=True)
 
         with kpi_cols[3]:
             with st.container(border=True):

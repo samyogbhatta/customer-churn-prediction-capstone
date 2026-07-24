@@ -129,12 +129,18 @@ class ChurnExplainer:
         
         return shap_vals, importance_df
 
-def plot_local_shap(contributions, max_display=10, theme_dark=True):
+def plot_local_shap(contributions, max_display=10, theme_dark=None):
     """Generates an interactive Plotly horizontal bar chart for local SHAP contributions.
     
     Shows features driving the prediction towards churn (Red) or loyalty (Green).
     """
-    # Take the top N contributing features
+    # Determine theme if not provided
+    if theme_dark is None:
+        try:
+            from src.theme_utils import is_dark_theme
+            theme_dark = is_dark_theme()
+        except Exception:
+            theme_dark = True  # fallback to dark
     df_plot = contributions.head(max_display).copy()
     
     # Reverse order so the largest is at the top of the horizontal bar chart
@@ -187,10 +193,10 @@ def plot_local_shap(contributions, max_display=10, theme_dark=True):
         hovertemplate="Feature: %{y}<br>SHAP Value: %{x:.4f}<extra></extra>"
     ))
     
-    # Dynamic layout styling
-    bg_color = "rgba(17,17,17,0)" # transparent
-    text_color = "#E0E0E0" if theme_dark else "#111111"
-    grid_color = "rgba(255,255,255,0.08)" if theme_dark else "rgba(0,0,0,0.08)"
+    # Dynamic layout styling based on theme
+    bg_color = "rgba(255,255,255,0)" if not theme_dark else "rgba(17,17,17,0)"
+    text_color = "#111111" if not theme_dark else "#E0E0E0"
+    grid_color = "rgba(0,0,0,0.08)" if not theme_dark else "rgba(255,255,255,0.08)"
     
     fig.update_layout(
         title=dict(
