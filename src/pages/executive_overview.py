@@ -6,7 +6,7 @@ import plotly.express as px
 # pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
 from src.explainability import plot_summary, plot_mean_bar, plot_dependence, plot_local_shap, plot_waterfall
-from src.theme_utils import is_dark_theme
+from src.theme_utils import is_dark_theme, apply_mpl_theme
 
 def render_executive_overview(filtered_df, explainer, df_raw):
     """Render the Executive Overview page.
@@ -22,7 +22,7 @@ def render_executive_overview(filtered_df, explainer, df_raw):
     st.subheader("Executive Overview & Demographic Insights")
 
     # Determine theme
-    dark_mode = is_dark_theme()
+    dark_mode = st.session_state.get("dark_mode", is_dark_theme())
     plotly_template = "plotly_dark" if dark_mode else "plotly"
 
     col1, col2 = st.columns(2)
@@ -120,12 +120,20 @@ def render_executive_overview(filtered_df, explainer, df_raw):
 
     # Plot 2: Beeswarm
     fig_summary = plot_summary(shap_vals, X_sample_processed)
+    if fig_summary is not None:
+        apply_mpl_theme(fig_summary, dark=dark_mode)
+        
     # Plot 3: Mean SHAP Bar
     fig_bar = plot_mean_bar(shap_vals, X_sample_processed)
+    if fig_bar is not None:
+        apply_mpl_theme(fig_bar, dark=dark_mode)
+        
     # Plot 4: Feature Dependence (Age)
     fig_display = X_sample_processed.copy()
     fig_display["age"] = df_sample.loc[fig_display.index, "age"]
     fig_dependence = plot_dependence("age", shap_vals, fig_display)
+    if fig_dependence is not None:
+        apply_mpl_theme(fig_dependence, dark=dark_mode)
 
     if fig_summary is not None:
         fig_summary.set_size_inches(7.0, 4.0)

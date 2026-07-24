@@ -48,8 +48,21 @@ def get_base64_of_bin_file(bin_file):
         data = f.read()
     return base64.b64encode(data).decode()
 
-# Check current theme base from streamlit
-dark_mode = is_dark_theme()
+# Sidebar Theme Selector (rendered at the very top of the sidebar)
+with st.sidebar:
+    st.markdown("### 🌓 Appearance")
+    theme_choice = st.selectbox(
+        "Select Theme Mode",
+        options=["Auto (System)", "Dark Mode", "Light Mode"],
+        index=0,
+        help="Switch between Dark Mode, Light Mode, or let it auto-detect based on your system / Streamlit configuration."
+    )
+    st.markdown("---")
+
+if theme_choice == "Auto (System)":
+    dark_mode = is_dark_theme()
+else:
+    dark_mode = (theme_choice == "Dark Mode")
 
 if dark_mode:
     bg_color = "#090d16"
