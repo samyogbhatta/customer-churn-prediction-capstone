@@ -329,6 +329,127 @@ REQUIRED_RAW_FEATURES = [
     "usage_drop_pct", "recharge_drop_pct", "inactive_days"
 ]
 
+# ---------------------------------------------------------------------------
+# STRICTNESS PRESETS DEFINITION & THRESHOLD MANAGEMENT
+# ---------------------------------------------------------------------------
+STRICTNESS_PRESETS = {
+    "Low (Conservative - Cutoff: 70%)": {
+        "churn_threshold": 0.70,
+        "critical_threshold": 0.80,
+        "elevated_threshold": 0.50,
+        "icon": "🟢",
+        "badge_color": "#22c55e",
+        "label": "Low Strictness",
+        "desc": "High Precision mode: Flags churn only when probability is ≥70%. Minimizes false alarms."
+    },
+    "Medium (Balanced - Cutoff: 50%)": {
+        "churn_threshold": 0.50,
+        "critical_threshold": 0.70,
+        "elevated_threshold": 0.30,
+        "icon": "⚖️",
+        "badge_color": "#3b82f6",
+        "label": "Medium Strictness",
+        "desc": "Standard Balanced mode: Standard 50% cutoff. Optimal baseline accuracy."
+    },
+    "High (Proactive - Cutoff: 30%)": {
+        "churn_threshold": 0.30,
+        "critical_threshold": 0.50,
+        "elevated_threshold": 0.20,
+        "icon": "⚡",
+        "badge_color": "#f59e0b",
+        "label": "High Strictness",
+        "desc": "Early Detection mode: Flags churn when probability is ≥30%. Catches churners early."
+    },
+    "Custom (Manual Slider)": {
+        "churn_threshold": 0.50,
+        "critical_threshold": 0.70,
+        "elevated_threshold": 0.30,
+        "icon": "⚙️",
+        "badge_color": "#8b5cf6",
+        "label": "Custom Strictness",
+        "desc": "Set your custom cutoff threshold percentage using the slider."
+    }
+}
+
+def apply_strictness_to_df(df, churn_thresh, crit_thresh, elev_thresh):
+    """Re-annotates dataframe risk levels and churn predictions based on active model strictness thresholds."""
+    if df is None or df.empty or "churn_probability" not in df.columns:
+        return df
+    probs = df["churn_probability"]
+    df["Risk Score (%)"] = (probs * 100).round(1)
+    df["Risk Level"] = np.where(
+        probs >= crit_thresh, "🔴 Critical",
+        np.where(probs >= elev_thresh, "⚠️ Elevated", "🟢 Low")
+    )
+    df["Churn Prediction"] = np.where(
+        probs >= churn_thresh, "🔴 Will Churn", "🟢 Will Not Churn"
+    )
+    if not st.session_state.get("churn_labels_are_real", False):
+        df["churn"] = (probs >= churn_thresh).astype(int)
+    return df
+
+# Default fallback threshold variables before dataset upload
+active_churn_thresh = 0.50
+active_crit_thresh = 0.70
+active_elev_thresh = 0.30
+preset_data = STRICTNESS_PRESETS["Medium (Balanced - Cutoff: 50%)"]
+
+# Sidebar configuration panel for Model Strictness — ONLY rendered after dataset is loaded
+if "uploaded_df" in st.session_state and st.session_state.uploaded_df is not None:
+    with st.sidebar:
+        st.markdown("## 🎯 Model Strictness")
+        st.markdown("<p style='color: #94a3b8; font-size: 0.8rem; margin-top:-8px;'>Control prediction sensitivity & risk classification thresholds.</p>", unsafe_allow_html=True)
+        
+        strictness_choice = st.selectbox(
+            "Sensitivity Preset",
+            options=list(STRICTNESS_PRESETS.keys()),
+            index=1,  # Default: Medium
+            key="strictness_preset"
+        )
+        
+        preset_data = STRICTNESS_PRESETS[strictness_choice]
+        
+        if strictness_choice == "Custom (Manual Slider)":
+            custom_cutoff_pct = st.slider(
+                "Churn Cutoff Threshold (%)",
+                min_value=10,
+                max_value=90,
+                value=50,
+                step=5,
+                help="Subscribers with churn probability at or above this threshold will be flagged as 'Will Churn'."
+            )
+            active_churn_thresh = custom_cutoff_pct / 100.0
+            active_crit_thresh = min(0.95, round(active_churn_thresh + 0.20, 2))
+            active_elev_thresh = max(0.05, round(active_churn_thresh - 0.20, 2))
+        else:
+            active_churn_thresh = preset_data["churn_threshold"]
+            active_crit_thresh = preset_data["critical_threshold"]
+            active_elev_thresh = preset_data["elevated_threshold"]
+
+        st.markdown(f"""
+        <div style='background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 12px; margin-top: 5px; margin-bottom: 15px;'>
+            <div style='display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;'>
+                <span style='font-size: 0.85rem; font-weight: 700; color: #ffffff;'>{preset_data["icon"]} {preset_data["label"]}</span>
+                <span style='background: {preset_data["badge_color"]}; color: #ffffff; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 800;'>Cutoff: {int(active_churn_thresh*100)}%</span>
+            </div>
+            <p style='color: #94a3b8; font-size: 0.75rem; margin: 0; line-height: 1.3;'>{preset_data["desc"]}</p>
+            <hr style='border-color: rgba(255,255,255,0.1); margin: 8px 0;'>
+            <div style='font-size: 0.72rem; color: #cbd5e1; display: flex; justify-content: space-between;'>
+                <span>🔴 Critical: ≥<b>{int(active_crit_thresh*100)}%</b></span>
+                <span>⚠️ Elevated: ≥<b>{int(active_elev_thresh*100)}%</b></span>
+                <span>🟢 Low: &lt;<b>{int(active_elev_thresh*100)}%</b></span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Apply active strictness settings to stored dataset
+    st.session_state.uploaded_df = apply_strictness_to_df(
+        st.session_state.uploaded_df,
+        active_churn_thresh,
+        active_crit_thresh,
+        active_elev_thresh
+    )
+
 def process_and_store_uploaded_data(uploaded_df_raw, filename):
     """Validates missing columns, parses features, generates predictions, and maps session state metrics."""
     # Check for missing essential raw columns (optional columns will be defaulted)
@@ -344,17 +465,19 @@ def process_and_store_uploaded_data(uploaded_df_raw, filename):
     probs = explainer.model.predict_proba(X_processed.values)[:, 1]
     
     uploaded_df["churn_probability"] = probs
-    uploaded_df["Risk Score (%)"] = (probs * 100).round(1)
-    uploaded_df["Risk Level"] = np.where(probs >= 0.7, "🔴 Critical", np.where(probs >= 0.3, "⚠️ Elevated", "🟢 Low"))
     
     if "churn" not in uploaded_df_raw.columns or uploaded_df_raw["churn"].isna().all():
-        # No real ground-truth labels — synthesize from model predictions
-        uploaded_df["churn"] = (probs >= 0.5).astype(int)
         st.session_state.churn_labels_are_real = False
     else:
-        uploaded_df["churn"] = uploaded_df["churn"].fillna(0).astype(int)
-        # Real labels present — but flag training data to avoid inflated accuracy
+        uploaded_df["churn"] = uploaded_df_raw["churn"].fillna(0).astype(int)
         st.session_state.churn_labels_are_real = True
+
+    uploaded_df = apply_strictness_to_df(
+        uploaded_df,
+        active_churn_thresh,
+        active_crit_thresh,
+        active_elev_thresh
+    )
         
     st.session_state.uploaded_df = uploaded_df
     st.session_state.uploaded_filename = filename
@@ -489,25 +612,25 @@ if "uploaded_df" not in st.session_state:
                     else:
                         result_df = st.session_state.uploaded_df
                         total_rec = len(result_df)
-                        churners = int((result_df["churn_probability"] >= 0.5).sum())
+                        churners = int((result_df["churn_probability"] >= active_churn_thresh).sum())
                         non_churners = total_rec - churners
-                        critical = int((result_df["churn_probability"] >= 0.7).sum())
+                        critical = int((result_df["churn_probability"] >= active_crit_thresh).sum())
                         st.success(f"✅ Processed {total_rec:,} customer records successfully!")
                         st.markdown(f"""
                         <div style='background: linear-gradient(135deg, #0d1b2e, #1a2744); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 16px; margin-top: 10px;'>
-                            <p style='color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;'>🤖 Model Prediction Results</p>
+                            <p style='color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;'>🤖 Model Prediction Results (Strictness: {preset_data['label']} | Cutoff: {int(active_churn_thresh*100)}%)</p>
                             <div style='display: flex; gap: 16px; flex-wrap: wrap;'>
                                 <div style='flex: 1; text-align: center; background: rgba(220,20,60,0.15); border-radius: 8px; padding: 10px;'>
                                     <div style='color: #ef4444; font-size: 1.8rem; font-weight: 800;'>{churners:,}</div>
-                                    <div style='color: #fca5a5; font-size: 0.8rem;'>🔴 Predicted to Churn</div>
+                                    <div style='color: #fca5a5; font-size: 0.8rem;'>🔴 Predicted to Churn (&ge;{int(active_churn_thresh*100)}%)</div>
                                 </div>
                                 <div style='flex: 1; text-align: center; background: rgba(22,163,74,0.15); border-radius: 8px; padding: 10px;'>
                                     <div style='color: #22c55e; font-size: 1.8rem; font-weight: 800;'>{non_churners:,}</div>
-                                    <div style='color: #86efac; font-size: 0.8rem;'>🟢 Predicted to Stay</div>
+                                    <div style='color: #86efac; font-size: 0.8rem;'>🟢 Predicted to Stay (&lt;{int(active_churn_thresh*100)}%)</div>
                                 </div>
                                 <div style='flex: 1; text-align: center; background: rgba(239,68,68,0.25); border-radius: 8px; padding: 10px;'>
                                     <div style='color: #fbbf24; font-size: 1.8rem; font-weight: 800;'>{critical:,}</div>
-                                    <div style='color: #fde68a; font-size: 0.8rem;'>⚠️ Critical Risk (&ge;70%)</div>
+                                    <div style='color: #fde68a; font-size: 0.8rem;'>⚠️ Critical Risk (&ge;{int(active_crit_thresh*100)}%)</div>
                                 </div>
                             </div>
                         </div>
@@ -594,13 +717,13 @@ if app_mode != "Simulator":
     # labels always yields 100% — instead show the stored held-out test-set accuracy.
     churn_labels_are_real = st.session_state.get("churn_labels_are_real", False)
     if total_customers > 0 and churn_labels_are_real:
-        predicted_labels = (filtered_df["churn_probability"] >= 0.5).astype(int)
+        predicted_labels = (filtered_df["churn_probability"] >= active_churn_thresh).astype(int)
         actual_labels = filtered_df["churn"]
         correct_predictions = (predicted_labels == actual_labels).sum()
         model_accuracy = correct_predictions / total_customers
-        accuracy_source = "Uploaded Data"
+        accuracy_source = f"Cutoff: {int(active_churn_thresh*100)}%"
         accuracy_label = "Model Accuracy"
-        accuracy_caption = "✅ Accuracy computed by comparing model predictions against the true churn labels in your uploaded CSV."
+        accuracy_caption = f"✅ Accuracy computed at {int(active_churn_thresh*100)}% threshold by comparing predictions against ground-truth labels."
     else:
         # No ground-truth labels — show average prediction confidence instead
         # Confidence per customer = max(prob, 1-prob), i.e. how sure the model is of its label
@@ -619,7 +742,7 @@ if app_mode != "Simulator":
 
     high_risk_revenue = 0.0
     if total_customers > 0:
-        high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= 0.3, "avg_recharge_amount_npr"].sum()
+        high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= active_elev_thresh, "avg_recharge_amount_npr"].sum()
 
     st.markdown("""
         <style>
@@ -793,11 +916,13 @@ if app_mode == "Overview":
             with st.spinner("Generating reports..."):
                 excel_path = os.path.join("reports", "at_risk_customers.xlsx")
                 os.makedirs("reports", exist_ok=True)
-                at_risk_df = filtered_df[filtered_df["churn_probability"] >= 0.5].copy()
+                at_risk_df = filtered_df[filtered_df["churn_probability"] >= active_churn_thresh].copy()
                 export_excel(at_risk_df, excel_path)
                 with open(excel_path, "rb") as f:
                     st.session_state.excel_report_bytes = f.read()
                 
+                overall_summary["strictness_label"] = preset_data["label"]
+                overall_summary["churn_threshold"] = active_churn_thresh
                 pdf_path = generate_report_pdf(overall_summary, filtered_df, explainer)
                 with open(pdf_path, "rb") as f:
                     st.session_state.pdf_report_bytes = f.read()
@@ -1018,9 +1143,9 @@ elif app_mode == "Customer List":
     else:
         # ── Prediction summary banner ──────────────────────────────────────
         total_shown = len(filtered_df)
-        churn_pred_count = int((filtered_df["churn_probability"] >= 0.5).sum())
+        churn_pred_count = int((filtered_df["churn_probability"] >= active_churn_thresh).sum())
         stay_pred_count  = total_shown - churn_pred_count
-        critical_count   = int((filtered_df["churn_probability"] >= 0.7).sum())
+        critical_count   = int((filtered_df["churn_probability"] >= active_crit_thresh).sum())
         churn_rate_pct   = churn_pred_count / total_shown * 100 if total_shown > 0 else 0
 
         b1, b2, b3, b4 = st.columns(4)
@@ -1031,7 +1156,7 @@ elif app_mode == "Customer List":
         with b3:
             st.metric("🟢 Will Stay", f"{stay_pred_count:,}")
         with b4:
-            st.metric("⚠️ Critical Risk", f"{critical_count:,}", help="Customers with churn probability ≥ 70%")
+            st.metric("⚠️ Critical Risk", f"{critical_count:,}", help=f"Customers with churn probability ≥ {int(active_crit_thresh*100)}% (Strictness: {preset_data['label']})")
 
         st.markdown("---")
 
@@ -1053,14 +1178,14 @@ elif app_mode == "Customer List":
 
         # Add clear human-readable churn prediction label
         display_df["Churn Prediction"] = np.where(
-            display_df["churn_probability"] >= 0.5,
+            display_df["churn_probability"] >= active_churn_thresh,
             "🔴 Will Churn",
             "🟢 Will Not Churn"
         )
 
         display_df = display_df[display_df["Risk Level"].isin(risk_filter)]
         if churn_only:
-            display_df = display_df[display_df["churn_probability"] >= 0.5]
+            display_df = display_df[display_df["churn_probability"] >= active_churn_thresh]
         if search_id:
             display_df = display_df[
                 display_df["customer_id"].astype(str).str.contains(search_id, case=False)
@@ -1081,7 +1206,9 @@ elif app_mode == "Customer List":
         st.markdown(f"*Showing {len(display_df):,} of {total_shown:,} customers*")
 
         # ── Download prediction results ────────────────────────────────────
-        download_df = display_df[cols_to_show].copy()
+        priority_cols = ["customer_id", "Churn Prediction", "Risk Score (%)", "Risk Level", "churn_probability"]
+        all_cols = priority_cols + [col for col in display_df.columns if col not in priority_cols]
+        download_df = display_df[all_cols].copy()
         csv_bytes = download_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="📥 Download Prediction Results (CSV)",
@@ -1089,7 +1216,7 @@ elif app_mode == "Customer List":
             file_name="churn_predictions.csv",
             mime="text/csv",
             use_container_width=True,
-            help="Download the full prediction table with churn labels for all customers."
+            help="Download the full prediction table containing all features and churn predictions for all customers."
         )
 
 # ---------------------------------------------------------------------------
@@ -1162,14 +1289,14 @@ elif app_mode == "Customer Details":
                 domain={'x': [0, 1], 'y': [0, 1]},
                 gauge={
                     'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#f8fafc"},
-                    'bar': {'color': "#dc143c" if prob > 0.7 else ("#EF6C00" if prob > 0.3 else "#003893")},
+                    'bar': {'color': "#dc143c" if prob >= active_crit_thresh else ("#EF6C00" if prob >= active_elev_thresh else "#003893")},
                     'bgcolor': "#0f172a",
                     'borderwidth': 1,
                     'bordercolor': "#1e293b",
                     'steps': [
-                        {'range': [0, 30], 'color': 'rgba(0, 56, 147, 0.15)'},
-                        {'range': [30, 70], 'color': 'rgba(239, 108, 0, 0.15)'},
-                        {'range': [70, 100], 'color': 'rgba(220, 20, 60, 0.15)'}
+                        {'range': [0, active_elev_thresh*100], 'color': 'rgba(0, 56, 147, 0.15)'},
+                        {'range': [active_elev_thresh*100, active_crit_thresh*100], 'color': 'rgba(239, 108, 0, 0.15)'},
+                        {'range': [active_crit_thresh*100, 100], 'color': 'rgba(220, 20, 60, 0.15)'}
                     ]
                 }
             ))
@@ -1177,14 +1304,14 @@ elif app_mode == "Customer Details":
             st.plotly_chart(gauge_fig, use_container_width=True)
             
             actual_churn = customer_row["churn"].values[0]
-            st.write(f"**Actual Status:** {'🔴 Churned' if actual_churn == 1 else '🟢 Loyal'}")
+            st.write(f"**Actual Status:** {'🔴 Churned' if actual_churn == 1 else '🟢 Loyal'} | **Strictness Mode:** `{preset_data['label']}` (Cutoff: {int(active_churn_thresh*100)}%)")
             
-            if prob > 0.7:
-                st.error("🔴 **CRITICAL CHURN RISK**: Immediate retention program recommended.")
-            elif prob > 0.3:
-                st.warning("⚠️ **ELEVATED CHURN RISK**: Monitor activity and send targeted loyalty campaign.")
+            if prob >= active_crit_thresh:
+                st.error(f"🔴 **CRITICAL CHURN RISK** (Probability ≥ {int(active_crit_thresh*100)}%): Immediate retention program recommended.")
+            elif prob >= active_elev_thresh:
+                st.warning(f"⚠️ **ELEVATED CHURN RISK** (Probability ≥ {int(active_elev_thresh*100)}%): Monitor activity and send targeted loyalty campaign.")
             else:
-                st.success("🟢 **LOW CHURN RISK**: Customer demonstrates healthy activity levels.")
+                st.success(f"🟢 **LOW CHURN RISK** (Probability < {int(active_elev_thresh*100)}%): Customer demonstrates healthy activity levels.")
 
         with col_pred2:
             st.markdown("### Feature Contributions Breakdown")
@@ -1317,26 +1444,28 @@ elif app_mode == "Simulator":
             domain={'x': [0, 1], 'y': [0, 1]},
             gauge={
                 'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#f8fafc"},
-                'bar': {'color': "#dc143c" if prob > 0.7 else ("#EF6C00" if prob > 0.3 else "#003893")},
+                'bar': {'color': "#dc143c" if prob >= active_crit_thresh else ("#EF6C00" if prob >= active_elev_thresh else "#003893")},
                 'bgcolor': "#0f172a",
                 'borderwidth': 1,
                 'bordercolor': "#1e293b",
                 'steps': [
-                    {'range': [0, 30], 'color': 'rgba(0, 56, 147, 0.15)'},
-                    {'range': [30, 70], 'color': 'rgba(239, 108, 0, 0.15)'},
-                    {'range': [70, 100], 'color': 'rgba(220, 20, 60, 0.15)'}
+                    {'range': [0, active_elev_thresh*100], 'color': 'rgba(0, 56, 147, 0.15)'},
+                    {'range': [active_elev_thresh*100, active_crit_thresh*100], 'color': 'rgba(239, 108, 0, 0.15)'},
+                    {'range': [active_crit_thresh*100, 100], 'color': 'rgba(220, 20, 60, 0.15)'}
                 ]
             }
         ))
         gauge_fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260, margin=dict(l=30, r=30, t=30, b=30))
         st.plotly_chart(gauge_fig, use_container_width=True)
         
-        if prob > 0.7:
-            st.error("🔴 **CRITICAL CHURN RISK (SIMULATED)**: Subscriber is highly likely to churn.")
-        elif prob > 0.3:
-            st.warning("⚠️ **ELEVATED CHURN RISK (SIMULATED)**: Moderate churn probability.")
+        st.caption(f"🎯 Active Strictness Level: **{preset_data['label']}** (Churn Cutoff: **{int(active_churn_thresh*100)}%**)")
+
+        if prob >= active_crit_thresh:
+            st.error(f"🔴 **CRITICAL CHURN RISK (SIMULATED)** (Probability ≥ {int(active_crit_thresh*100)}%): Subscriber is highly likely to churn.")
+        elif prob >= active_elev_thresh:
+            st.warning(f"⚠️ **ELEVATED CHURN RISK (SIMULATED)** (Probability ≥ {int(active_elev_thresh*100)}%): Moderate churn probability.")
         else:
-            st.success("🟢 **LOW CHURN RISK (SIMULATED)**: Healthy profile.")
+            st.success(f"🟢 **LOW CHURN RISK (SIMULATED)** (Probability < {int(active_elev_thresh*100)}%): Healthy profile.")
 
     with col_sim_res2:
         st.markdown("### Simulated Feature Contributions")

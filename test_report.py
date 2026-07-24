@@ -11,7 +11,7 @@ def run_test():
     
     # 2. Load the dataset
     print("Loading dataset...")
-    df = pd.read_csv("data/telecom_churn_nepal.csv")
+    df = pd.read_csv("data/demo_upload_sample.csv")
     
     # 3. Simulate processing (like in app.py)
     print("Processing dataset...")

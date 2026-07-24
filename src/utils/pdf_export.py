@@ -243,9 +243,9 @@ def export_report(overall_summary: dict, filtered_df: pd.DataFrame, explainer, o
     pdf.cell(0, 6, f"  * Monthly Revenue At Churn Risk:  Rs. {overall_summary['high_risk_revenue']:,.2f}", ln=True)
     pdf.ln(4)
     
-    pdf.set_font('Arial', 'I', 9)
-    pdf.set_text_color(100, 116, 139)
-    pdf.cell(0, 5, "Note: Churn Risk is defined as customers with predicted churn probability >= 50%.", ln=True)
+    strict_label = overall_summary.get('strictness_label', 'Medium Strictness')
+    thresh_pct = int(overall_summary.get('churn_threshold', 0.5) * 100)
+    pdf.cell(0, 5, f"Note: Model Strictness set to '{strict_label}' (Churn Cutoff: {thresh_pct}%).", ln=True)
     
     pdf.set_y(175)
     pdf.add_section_title("How to Use This Report")
