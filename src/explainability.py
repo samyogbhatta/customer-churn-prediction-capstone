@@ -88,7 +88,7 @@ class ChurnExplainer:
         orig_values = {}
         for feature in self.feature_names:
             # Handle One-Hot Encoded features
-            if "_" in feature and any(c in feature for c in ["gender_", "province_", "district_type_", "sim_type_"]):
+            if "_" in feature and any(c in feature for c in ["gender_", "province_", "district_type_", "sim_type_", "recharge_segment_"]):
                 orig_values[feature] = X_processed[feature].values[0]
             else:
                 if feature in engineered_row.columns:
@@ -153,6 +153,8 @@ def plot_local_shap(contributions, max_display=10, theme_dark=True):
             name = f"SIM: {name.split(' ')[-1]}"
         elif "District Type" in name:
             name = f"District: {name.split(' ')[-1]}"
+        elif "Recharge Segment" in name:
+            name = f"Segment: {name.split(' ')[-1]}"
             
         # Add actual value in parentheses if numeric
         if isinstance(val, (int, float)) and not np.isnan(val):

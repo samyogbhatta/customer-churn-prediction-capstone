@@ -1,15 +1,80 @@
 {
-    "accuracy": 0.797,
-    "precision": 0.6197183098591549,
-    "recall": 0.5196850393700787,
-    "f1_score": 0.5653104925053534,
-    "roc_auc": 0.8141478963923077,
-    "confusion_matrix": {
-        "tn": 665,
-        "fp": 81,
-        "fn": 122,
-        "tp": 132
+    "best_cv_roc_auc": 0.9891504882812501,
+    "best_hyperparameters": {
+        "subsample": 0.7,
+        "reg_lambda": 5.0,
+        "reg_alpha": 0,
+        "n_estimators": 300,
+        "min_child_weight": 3,
+        "max_depth": 6,
+        "learning_rate": 0.05,
+        "gamma": 0,
+        "colsample_bytree": 0.7
     },
+    "class_counts": {
+        "original_train": {
+            "0": 9600,
+            "1": 2400
+        },
+        "smote_train": {
+            "0": 9600,
+            "1": 9600
+        },
+        "smotetomek_train": {
+            "0": 9466,
+            "1": 9466
+        }
+    },
+    "smote": {
+        "accuracy": 0.9133333333333333,
+        "precision": 0.7920962199312714,
+        "recall": 0.7683333333333333,
+        "f1_score": 0.7800338409475466,
+        "roc_auc": 0.9586402777777777,
+        "average_precision": 0.8744023095399924,
+        "confusion_matrix": {
+            "tn": 2279,
+            "fp": 121,
+            "fn": 139,
+            "tp": 461
+        }
+    },
+    "smotetomek": {
+        "accuracy": 0.9133333333333333,
+        "precision": 0.7931034482758621,
+        "recall": 0.7666666666666667,
+        "f1_score": 0.7796610169491526,
+        "roc_auc": 0.9586805555555556,
+        "average_precision": 0.8733944708776751,
+        "confusion_matrix": {
+            "tn": 2280,
+            "fp": 120,
+            "fn": 140,
+            "tp": 460
+        }
+    },
+    "cv_results_auc_scores": [
+        0.9611506998697917,
+        0.9815650065104168,
+        0.9885103190104166,
+        0.9857579427083333,
+        0.9760244954427083,
+        0.9881869303385417,
+        0.9687618489583333,
+        0.9876146158854167,
+        0.9694738444010417,
+        0.9891504882812501,
+        0.9759899576822918,
+        0.9889743489583332,
+        0.9610344401041667,
+        0.9855970377604167,
+        0.9837139648437501,
+        0.9591753255208334,
+        0.9891337239583334,
+        0.9887127604166667,
+        0.987442578125,
+        0.9866869466145832
+    ],
     "feature_names": [
         "age",
         "tenure_days",
@@ -20,6 +85,7 @@
         "last_recharge_days_ago",
         "avg_recharge_amount_npr",
         "recharge_count_30d",
+        "monthly_bill_npr",
         "signal_strength_dbm",
         "call_drop_rate",
         "avg_data_speed_mbps",
@@ -51,6 +117,10 @@
         "district_type_Urban",
         "sim_type_Postpaid",
         "sim_type_Prepaid",
+        "recharge_segment_High",
+        "recharge_segment_Low",
+        "recharge_segment_Medium",
+        "recharge_segment_Postpaid",
         "data_pack_active",
         "voice_pack_active",
         "vas_active",

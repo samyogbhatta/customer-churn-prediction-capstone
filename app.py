@@ -359,7 +359,7 @@ if "uploaded_df" not in st.session_state:
             <p style='color: #64748b; font-size: 0.8rem; font-style: italic; margin-top: 8px;'>Optional Columns: customer_id, churn</p>
             """, unsafe_allow_html=True)
         
-        DATA_PATH = "data/telecom_churn_nepal.csv"
+        DATA_PATH = "data/nepal_telecom_churn_main.csv"
         df_demo = load_dataset(DATA_PATH)
         
         if df_demo is not None:
@@ -378,14 +378,14 @@ if "uploaded_df" not in st.session_state:
                 )
             with col_demo_btn:
                 if st.button("🚀 Load Demo Dataset", use_container_width=True):
-                    errors = process_and_store_uploaded_data(df_demo, "telecom_churn_nepal_demo.csv")
+                    errors = process_and_store_uploaded_data(df_demo, "nepal_telecom_churn_main.csv")
                     if errors:
                         st.error(f"Demo dataset is missing columns: {errors}")
                     else:
                         st.success("Demo data loaded!")
                         st.rerun()
         else:
-            st.info("Demo CSV file not found at 'data/telecom_churn_nepal.csv'. Run `python src/data_generator.py` to create it.")
+            st.info("Demo CSV file not found at 'data/nepal_telecom_churn_main.csv'.")
             
     with col_upload_side:
         st.markdown("""
