@@ -275,6 +275,7 @@ REQUIRED_RAW_FEATURES = [
     "age", "gender", "province", "district_type", "sim_type", "tenure_days",
     "calls_min_30d", "sms_count_30d", "data_gb_30d", "night_usage_pct",
     "last_recharge_days_ago", "avg_recharge_amount_npr", "recharge_count_30d",
+    "monthly_bill_npr", "recharge_segment",
     "signal_strength_dbm", "call_drop_rate", "avg_data_speed_mbps",
     "num_complaints_30d", "avg_resolution_time_hours",
     "data_pack_active", "voice_pack_active", "vas_active", "roaming_active",
@@ -283,6 +284,7 @@ REQUIRED_RAW_FEATURES = [
 
 def process_and_store_uploaded_data(uploaded_df_raw, filename):
     """Validates missing columns, parses features, generates predictions, and maps session state metrics."""
+    # Check for missing essential raw columns (optional columns will be defaulted)
     missing_cols = [col for col in REQUIRED_RAW_FEATURES if col not in uploaded_df_raw.columns]
     if missing_cols:
         return missing_cols
@@ -291,8 +293,7 @@ def process_and_store_uploaded_data(uploaded_df_raw, filename):
     if "customer_id" not in uploaded_df.columns:
         uploaded_df["customer_id"] = [f"NP-CUST-{i+1:05d}" for i in range(len(uploaded_df))]
         
-    X_input = uploaded_df[REQUIRED_RAW_FEATURES]
-    X_processed = explainer.get_preprocessed_df(X_input)
+    X_processed = explainer.get_preprocessed_df(uploaded_df)
     probs = explainer.model.predict_proba(X_processed)[:, 1]
     
     uploaded_df["churn_probability"] = probs

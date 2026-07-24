@@ -44,12 +44,14 @@ def train_and_evaluate(data_path="data/nepal_telecom_churn_main.csv", models_dir
     # 1. SMOTE
     smote = SMOTE(random_state=random_state)
     X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
+    X_train_smote = pd.DataFrame(X_train_smote, columns=feature_names)
     smote_counts = pd.Series(y_train_smote).value_counts().to_dict()
     print(f"After SMOTE:                   Retained (0) = {smote_counts.get(0, 0)}, Churned (1) = {smote_counts.get(1, 0)}")
     
     # 2. SMOTETomek
     smote_tomek = SMOTETomek(random_state=random_state)
     X_train_tomek, y_train_tomek = smote_tomek.fit_resample(X_train, y_train)
+    X_train_tomek = pd.DataFrame(X_train_tomek, columns=feature_names)
     tomek_counts = pd.Series(y_train_tomek).value_counts().to_dict()
     print(f"After SMOTETomek:              Retained (0) = {tomek_counts.get(0, 0)}, Churned (1) = {tomek_counts.get(1, 0)}")
     
