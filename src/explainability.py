@@ -59,7 +59,7 @@ class ChurnExplainer:
         X_processed = self.get_preprocessed_df(raw_customer_row)
         
         # Get probability prediction
-        prob = self.model.predict_proba(X_processed)[0, 1]
+        prob = self.model.predict_proba(X_processed.values)[0, 1]
         
         # Compute SHAP values
         shap_values_obj = self.explainer(X_processed)

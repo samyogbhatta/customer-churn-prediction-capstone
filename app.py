@@ -294,7 +294,7 @@ def process_and_store_uploaded_data(uploaded_df_raw, filename):
         uploaded_df["customer_id"] = [f"NP-CUST-{i+1:05d}" for i in range(len(uploaded_df))]
         
     X_processed = explainer.get_preprocessed_df(uploaded_df)
-    probs = explainer.model.predict_proba(X_processed)[:, 1]
+    probs = explainer.model.predict_proba(X_processed.values)[:, 1]
     
     uploaded_df["churn_probability"] = probs
     uploaded_df["Risk Score (%)"] = (probs * 100).round(1)
