@@ -6,6 +6,11 @@ from xgboost import XGBClassifier
 import plotly.graph_objects as go
 import joblib
 
+try:
+    from preprocessing import engineer_features
+except ImportError:
+    from src.preprocessing import engineer_features
+
 class ChurnExplainer:
     def __init__(self, model_path="models/xgboost_churn_model.json", preprocessor_path="models/preprocessor.joblib"):
         """Initializes the SHAP Explainer with the trained XGBoost model and preprocessor."""
@@ -37,7 +42,8 @@ class ChurnExplainer:
 
     def get_preprocessed_df(self, raw_df):
         """Converts raw customer DataFrame into preprocessed DataFrame with feature names."""
-        processed_arr = self.preprocessor.transform(raw_df)
+        engineered_df = engineer_features(raw_df)
+        processed_arr = self.preprocessor.transform(engineered_df)
         return pd.DataFrame(processed_arr, columns=self.feature_names, index=raw_df.index)
 
     def explain_instance(self, raw_customer_row):
@@ -46,6 +52,9 @@ class ChurnExplainer:
         Returns:
             dict containing base value, prediction probability, SHAP values, and feature contributions.
         """
+        # Engineer features to get the unscaled values
+        engineered_row = engineer_features(raw_customer_row)
+        
         # Transform the single row
         X_processed = self.get_preprocessed_df(raw_customer_row)
         
@@ -79,11 +88,11 @@ class ChurnExplainer:
         orig_values = {}
         for feature in self.feature_names:
             # Handle One-Hot Encoded features
-            if "_" in feature and any(c in feature for c in ["gender_", "province_", "district_type_", "sim_type_"]):
+            if "_" in feature and any(c in feature for c in ["gender_", "province_", "district_type_", "sim_type_", "recharge_segment_"]):
                 orig_values[feature] = X_processed[feature].values[0]
             else:
-                if feature in raw_customer_row.columns:
-                    orig_values[feature] = raw_customer_row[feature].values[0]
+                if feature in engineered_row.columns:
+                    orig_values[feature] = engineered_row[feature].values[0]
                 else:
                     orig_values[feature] = X_processed[feature].values[0]
                     
@@ -144,6 +153,8 @@ def plot_local_shap(contributions, max_display=10, theme_dark=True):
             name = f"SIM: {name.split(' ')[-1]}"
         elif "District Type" in name:
             name = f"District: {name.split(' ')[-1]}"
+        elif "Recharge Segment" in name:
+            name = f"Segment: {name.split(' ')[-1]}"
             
         # Add actual value in parentheses if numeric
         if isinstance(val, (int, float)) and not np.isnan(val):
@@ -186,8 +197,10 @@ def plot_local_shap(contributions, max_display=10, theme_dark=True):
             x=0.0
         ),
         xaxis=dict(
-            title="SHAP Value (Impact on Prediction Log-Odds)",
-            titlefont=dict(size=11, color=text_color),
+            title=dict(
+                text="SHAP Value (Impact on Prediction Log-Odds)",
+                font=dict(size=11, color=text_color)
+            ),
             tickfont=dict(color=text_color),
             gridcolor=grid_color,
             zerolinecolor=text_color,
@@ -250,3 +263,41 @@ if __name__ == "__main__":
         
     except Exception as e:
         print(f"Error testing explainer: {e}")
+    # Existing code up to line 264 remains unchanged
+
+# ---------------------------------------------------------------------------
+# Additional SHAP plotting utilities required by the Streamlit app
+# ---------------------------------------------------------------------------
+import matplotlib.pyplot as plt
+
+def plot_summary(shap_values, X_processed, max_display=20):
+    """Generates a SHAP summary (beeswarm) plot and returns a Matplotlib Figure.
+    """
+    fig = plt.figure(figsize=(10, 6))
+    shap.summary_plot(shap_values, X_processed, max_display=max_display, show=False)
+    plt.tight_layout()
+    return fig
+
+def plot_mean_bar(shap_values, X_processed, max_display=20):
+    """Generates a SHAP mean absolute bar plot and returns a Matplotlib Figure.
+    """
+    fig = plt.figure(figsize=(10, 6))
+    shap.summary_plot(shap_values, X_processed, max_display=max_display, plot_type="bar", show=False)
+    plt.tight_layout()
+    return fig
+
+def plot_dependence(feature_name, shap_values, X_processed, interaction_index=None):
+    """Generates a SHAP dependence plot for a given feature.
+    """
+    fig = plt.figure(figsize=(10, 6))
+    shap.dependence_plot(feature_name, shap_values, X_processed, interaction_index=interaction_index, show=False)
+    plt.tight_layout()
+    return fig
+
+def plot_waterfall(shap_values_instance, X_processed_instance=None, max_display=10):
+    """Generates a SHAP waterfall plot for a single instance.
+    """
+    fig = plt.figure(figsize=(10, 6))
+    shap.waterfall_plot(shap_values_instance, max_display=max_display, show=False)
+    plt.tight_layout()
+    return fig
