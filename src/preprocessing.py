@@ -268,6 +268,21 @@ def create_preprocessing_pipeline():
     )
     
     return preprocessor
+def get_feature_names(preprocessor):
+    """Return ordered feature names after preprocessing.
+
+    The pipeline consists of a numerical transformer, a categorical one‑hot encoder, and a binary transformer.
+    This function reconstructs the feature column order used when creating the training DataFrames.
+    """
+    # Numerical features are retained as‑is
+    num_features = NUMERICAL_COLS
+    # Retrieve one‑hot encoded feature names
+    cat_encoder = preprocessor.named_transformers_["cat"].named_steps["onehot"]
+    cat_features = list(cat_encoder.get_feature_names_out(CATEGORICAL_COLS))
+    # Binary features are also retained as‑is
+    bin_features = BINARY_COLS
+    return num_features + cat_features + bin_features
+
 
 def preprocess_and_save(file_path, models_dir="models", test_size=0.2, random_state=42):
     """Loads raw data, fits preprocessor on training set, transforms data, and exports preprocessor."""
