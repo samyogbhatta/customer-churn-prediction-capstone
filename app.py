@@ -431,8 +431,8 @@ if "uploaded_df" not in st.session_state:
         DATA_PATH = "data/nepal_telecom_churn_main.csv"
         df_train = load_dataset(DATA_PATH)
 
-        # Three-column actions for data handling
-        col_dl_btn, col_demo_btn, col_full_btn = st.columns(3)
+        # Two-column actions for data handling
+        col_dl_btn, col_demo_btn = st.columns(2)
         # 1️⃣ Download CSV Template (sample without churn)
         with col_dl_btn:
             sample_df = df_demo_sample.copy() if df_demo_sample is not None else pd.DataFrame()
@@ -459,19 +459,6 @@ if "uploaded_df" not in st.session_state:
                         st.rerun()
                 else:
                     st.info("Demo CSV not found. Generate it first.")
-        # 3️⃣ Load Full Training Data (contains true churn labels)
-        with col_full_btn:
-            if st.button("🔎 Load Full Training Data", use_container_width=True):
-                df_train = load_dataset(DATA_PATH)
-                if df_train is not None:
-                    errors = process_and_store_uploaded_data(df_train, "nepal_telecom_churn_main.csv")
-                    if errors:
-                        st.error(f"Training dataset is missing columns: {errors}")
-                    else:
-                        st.success("Full training data loaded! Accuracy will reflect real churn labels.")
-                        st.rerun()
-                else:
-                    st.error("Training CSV not found at the expected path.")
         
     with col_upload_side:
         st.markdown("""
@@ -500,7 +487,31 @@ if "uploaded_df" not in st.session_state:
                         st.error("Missing required columns:")
                         st.write(errors)
                     else:
-                        st.success(f"Processed {len(uploaded_df_raw)} records.")
+                        result_df = st.session_state.uploaded_df
+                        total_rec = len(result_df)
+                        churners = int((result_df["churn_probability"] >= 0.5).sum())
+                        non_churners = total_rec - churners
+                        critical = int((result_df["churn_probability"] >= 0.7).sum())
+                        st.success(f"✅ Processed {total_rec:,} customer records successfully!")
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #0d1b2e, #1a2744); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 16px; margin-top: 10px;'>
+                            <p style='color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;'>🤖 Model Prediction Results</p>
+                            <div style='display: flex; gap: 16px; flex-wrap: wrap;'>
+                                <div style='flex: 1; text-align: center; background: rgba(220,20,60,0.15); border-radius: 8px; padding: 10px;'>
+                                    <div style='color: #ef4444; font-size: 1.8rem; font-weight: 800;'>{churners:,}</div>
+                                    <div style='color: #fca5a5; font-size: 0.8rem;'>🔴 Predicted to Churn</div>
+                                </div>
+                                <div style='flex: 1; text-align: center; background: rgba(22,163,74,0.15); border-radius: 8px; padding: 10px;'>
+                                    <div style='color: #22c55e; font-size: 1.8rem; font-weight: 800;'>{non_churners:,}</div>
+                                    <div style='color: #86efac; font-size: 0.8rem;'>🟢 Predicted to Stay</div>
+                                </div>
+                                <div style='flex: 1; text-align: center; background: rgba(239,68,68,0.25); border-radius: 8px; padding: 10px;'>
+                                    <div style='color: #fbbf24; font-size: 1.8rem; font-weight: 800;'>{critical:,}</div>
+                                    <div style='color: #fde68a; font-size: 0.8rem;'>⚠️ Critical Risk (&ge;70%)</div>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                         st.rerun()
                 except Exception as e:
                     st.error(f"Failed to process CSV: {e}")
@@ -588,9 +599,23 @@ if app_mode != "Simulator":
         correct_predictions = (predicted_labels == actual_labels).sum()
         model_accuracy = correct_predictions / total_customers
         accuracy_source = "Uploaded Data"
+        accuracy_label = "Model Accuracy"
+        accuracy_caption = "✅ Accuracy computed by comparing model predictions against the true churn labels in your uploaded CSV."
     else:
-        model_accuracy = metrics_data.get("accuracy", 0.85)
-        accuracy_source = "Test Set"
+        # No ground-truth labels — show average prediction confidence instead
+        # Confidence per customer = max(prob, 1-prob), i.e. how sure the model is of its label
+        if total_customers > 0:
+            probs = filtered_df["churn_probability"]
+            model_accuracy = float(np.maximum(probs, 1 - probs).mean())
+        else:
+            model_accuracy = metrics_data.get("accuracy", 0.85)
+        accuracy_source = "Avg Confidence"
+        accuracy_label = "Prediction Confidence"
+        accuracy_caption = (
+            f"🤖 Average confidence the model has in its own predictions on your uploaded data. "
+            f"({model_accuracy*100:.1f}% — higher means the model is more decisive). "
+            "Add a true `churn` column to your CSV to see real accuracy."
+        )
 
     high_risk_revenue = 0.0
     if total_customers > 0:
@@ -669,7 +694,7 @@ if app_mode != "Simulator":
 
         with kpi_cols[2]:
             with st.container(border=True):
-                st.markdown('<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Model Accuracy</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">{accuracy_label}</div>', unsafe_allow_html=True)
                 
                 fig3 = go.Figure(go.Indicator(
                     mode="gauge+number",
@@ -677,18 +702,13 @@ if app_mode != "Simulator":
                     number={'suffix': "%", 'font': {'size': 24, 'color': '#ffffff', 'weight': 'bold'}},
                     gauge={
                         'axis': {'range': [0, 100], 'visible': False},
-                        'bar': {'color': "#cf0a0a"}, 
+                        'bar': {'color': "#7c3aed" if accuracy_source == "Avg Confidence" else "#cf0a0a"}, 
                         'bgcolor': "rgba(255, 255, 255, 0.12)"
                     },
                     domain={'x': [0, 1], 'y': [0.15, 1]}
                 ))
                 fig3.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
                 st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
-                # Explain the source of the displayed accuracy
-                if accuracy_source == "Test Set":
-                    st.caption("⚙️ Accuracy is from the model’s held‑out test set (≈85%). Upload a CSV that includes a true `churn` column to compute live accuracy on your data.")
-                else:
-                    st.caption("✅ Accuracy computed on the uploaded dataset’s actual churn labels.")
                 st.markdown(f'<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Pipeline Confidence · {accuracy_source}</div>', unsafe_allow_html=True)
 
         with kpi_cols[3]:
@@ -992,26 +1012,85 @@ if app_mode == "Overview":
 # MODE: CUSTOMER LIST VIEW
 # ---------------------------------------------------------------------------
 elif app_mode == "Customer List":
-    st.subheader(" Customer List")
+    st.subheader("📋 Customer Churn Prediction Results")
     if len(filtered_df) == 0:
         st.warning("No customers match the active filters.")
     else:
-        col_f1, col_f2 = st.columns(2)
+        # ── Prediction summary banner ──────────────────────────────────────
+        total_shown = len(filtered_df)
+        churn_pred_count = int((filtered_df["churn_probability"] >= 0.5).sum())
+        stay_pred_count  = total_shown - churn_pred_count
+        critical_count   = int((filtered_df["churn_probability"] >= 0.7).sum())
+        churn_rate_pct   = churn_pred_count / total_shown * 100 if total_shown > 0 else 0
+
+        b1, b2, b3, b4 = st.columns(4)
+        with b1:
+            st.metric("Total Customers", f"{total_shown:,}")
+        with b2:
+            st.metric("🔴 Will Churn", f"{churn_pred_count:,}", delta=f"{churn_rate_pct:.1f}% of segment", delta_color="inverse")
+        with b3:
+            st.metric("🟢 Will Stay", f"{stay_pred_count:,}")
+        with b4:
+            st.metric("⚠️ Critical Risk", f"{critical_count:,}", help="Customers with churn probability ≥ 70%")
+
+        st.markdown("---")
+
+        # ── Filters ────────────────────────────────────────────────────────
+        col_f1, col_f2, col_f3 = st.columns([2, 2, 1])
         with col_f1:
-            risk_filter = st.multiselect("Filter by Risk Level", options=["🔴 Critical", "⚠️ Elevated", "🟢 Low"], default=["🔴 Critical", "⚠️ Elevated", "🟢 Low"])
+            risk_filter = st.multiselect(
+                "Filter by Risk Level",
+                options=["🔴 Critical", "⚠️ Elevated", "🟢 Low"],
+                default=["🔴 Critical", "⚠️ Elevated", "🟢 Low"]
+            )
         with col_f2:
             search_id = st.text_input("Search by Customer ID", "")
-        
+        with col_f3:
+            churn_only = st.checkbox("Show Churners Only", value=False)
+
+        # ── Build display table ────────────────────────────────────────────
         display_df = filtered_df.copy()
+
+        # Add clear human-readable churn prediction label
+        display_df["Churn Prediction"] = np.where(
+            display_df["churn_probability"] >= 0.5,
+            "🔴 Will Churn",
+            "🟢 Will Not Churn"
+        )
+
         display_df = display_df[display_df["Risk Level"].isin(risk_filter)]
+        if churn_only:
+            display_df = display_df[display_df["churn_probability"] >= 0.5]
         if search_id:
-            display_df = display_df[display_df["customer_id"].astype(str).str.contains(search_id, case=False)]
-        
-        cols_to_show = ["customer_id", "Risk Level", "Risk Score (%)", "age", "gender", "province", "tenure_days", "avg_recharge_amount_npr", "num_complaints_30d", "inactive_days"]
-        if "churn" in display_df.columns:
-            cols_to_show.append("churn")
-            
-        st.dataframe(display_df[cols_to_show].sort_values(by="Risk Score (%)", ascending=False), use_container_width=True, hide_index=True)
+            display_df = display_df[
+                display_df["customer_id"].astype(str).str.contains(search_id, case=False)
+            ]
+
+        cols_to_show = [
+            "customer_id", "Churn Prediction", "Risk Score (%)", "Risk Level",
+            "age", "gender", "province", "tenure_days",
+            "avg_recharge_amount_npr", "num_complaints_30d", "inactive_days"
+        ]
+
+        st.dataframe(
+            display_df[cols_to_show].sort_values(by="Risk Score (%)", ascending=False),
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.markdown(f"*Showing {len(display_df):,} of {total_shown:,} customers*")
+
+        # ── Download prediction results ────────────────────────────────────
+        download_df = display_df[cols_to_show].copy()
+        csv_bytes = download_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Download Prediction Results (CSV)",
+            data=csv_bytes,
+            file_name="churn_predictions.csv",
+            mime="text/csv",
+            use_container_width=True,
+            help="Download the full prediction table with churn labels for all customers."
+        )
 
 # ---------------------------------------------------------------------------
 # MODE: CUSTOMER DETAILS VIEW
