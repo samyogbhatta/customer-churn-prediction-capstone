@@ -276,6 +276,7 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 # Additional SHAP plotting utilities required by the Streamlit app
 # ---------------------------------------------------------------------------
+# pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
 
 def plot_summary(shap_values, X_processed, max_display=20):
@@ -306,6 +307,145 @@ def plot_waterfall(shap_values_instance, X_processed_instance=None, max_display=
     """Generates a SHAP waterfall plot for a single instance.
     """
     fig = plt.figure(figsize=(10, 6))
+    
+    # Ensure we pass a single 1D explanation to waterfall_plot
+    if len(shap_values_instance.shape) == 3:
+        # Shape: (instances, features, classes) -> extract 1st instance, class 1 (churn)
+        shap_values_instance = shap_values_instance[0, :, 1]
+    elif len(shap_values_instance.shape) == 2:
+        # Shape: (instances, features) -> extract 1st instance
+        shap_values_instance = shap_values_instance[0]
+        
     shap.waterfall_plot(shap_values_instance, max_display=max_display, show=False)
     plt.tight_layout()
+    return fig
+
+def plot_plotly_waterfall(shap_values_instance, max_display=8, plotly_template="plotly", theme_dark=None):
+    """Generates an interactive Plotly Waterfall plot for a single instance explanation.
+    """
+    # Ensure we pass a single 1D explanation
+    if len(shap_values_instance.shape) == 3:
+        shap_values_instance = shap_values_instance[0, :, 1]
+    elif len(shap_values_instance.shape) == 2:
+        shap_values_instance = shap_values_instance[0]
+
+    # Determine theme if not provided
+    if theme_dark is None:
+        try:
+            from src.theme_utils import is_dark_theme
+            theme_dark = is_dark_theme()
+        except Exception:
+            theme_dark = True  # fallback to dark
+
+    base_value = float(shap_values_instance.base_values)
+    values = shap_values_instance.values
+    data = shap_values_instance.data
+    feature_names = shap_values_instance.feature_names
+
+    # Create a DataFrame to sort and slice features
+    df = pd.DataFrame({
+        "feature": feature_names,
+        "value": values,
+        "data": data,
+        "abs_value": np.abs(values)
+    })
+    
+    # Sort by absolute SHAP value
+    df = df.sort_values(by="abs_value", ascending=False).reset_index(drop=True)
+    
+    # Top N features
+    top_df = df.head(max_display)
+    other_df = df.tail(len(df) - max_display)
+    
+    # Construct measures, y (labels), and x (values)
+    measures = ["absolute"]
+    y_labels = ["Base Value"]
+    x_values = [base_value]
+    
+    # Add top features
+    for idx, row in top_df.iterrows():
+        feat_name = str(row["feature"]).replace("_", " ").title()
+        feat_val = row["data"]
+        
+        # Clean label formatting to match bar chart
+        if "Province" in feat_name:
+            feat_name = f"Province: {feat_name.split(' ')[-1]}"
+        elif "Gender" in feat_name:
+            feat_name = f"Gender: {feat_name.split(' ')[-1]}"
+        elif "Sim Type" in feat_name:
+            feat_name = f"SIM: {feat_name.split(' ')[-1]}"
+        elif "District Type" in feat_name:
+            feat_name = f"District: {feat_name.split(' ')[-1]}"
+        elif "Recharge Segment" in feat_name:
+            feat_name = f"Segment: {feat_name.split(' ')[-1]}"
+            
+        if isinstance(feat_val, (int, np.integer)):
+            val_str = f" ({feat_val})"
+        elif isinstance(feat_val, (float, np.floating)):
+            if feat_val.is_integer():
+                val_str = f" ({int(feat_val)})"
+            else:
+                val_str = f" ({feat_val:.2f})"
+        else:
+            val_str = f" ({feat_val})"
+            
+        measures.append("relative")
+        y_labels.append(f"{feat_name}{val_str}")
+        x_values.append(float(row["value"]))
+        
+    # Add "Other" if there are remaining features
+    if not other_df.empty:
+        measures.append("relative")
+        y_labels.append("Other Features")
+        x_values.append(float(other_df["value"].sum()))
+        
+    # Add end total (model prediction in log-odds)
+    measures.append("total")
+    y_labels.append("Prediction (Log-Odds)")
+    x_values.append(0)
+    
+    # Dynamic layout styling based on theme to match plot_local_shap
+    bg_color = "rgba(255,255,255,0)" if not theme_dark else "rgba(17,17,17,0)"
+    text_color = "#111111" if not theme_dark else "#E0E0E0"
+    grid_color = "rgba(0,0,0,0.08)" if not theme_dark else "rgba(255,255,255,0.08)"
+    
+    fig = go.Figure(go.Waterfall(
+        orientation="h",
+        measure=measures,
+        y=y_labels,
+        x=x_values,
+        connector={"line": {"color": grid_color, "width": 1, "dash": "dot"}},
+        increasing={"marker": {"color": "#dc143c"}}, # crimson
+        decreasing={"marker": {"color": "#003893"}}, # blue
+        totals={"marker": {"color": "#EF6C00"}},      # orange
+        text=[f"+{val:.3f}" if val > 0 else f"{val:.3f}" for val in x_values[:-1]] + ["Total"],
+        textposition="outside"
+    ))
+    
+    fig.update_layout(
+        title=dict(
+            text="Prediction Path (Waterfall)",
+            font=dict(size=14, color=text_color),
+            x=0.0
+        ),
+        xaxis=dict(
+            title=dict(
+                text="SHAP Value (Impact on Prediction Log-Odds)",
+                font=dict(size=11, color=text_color)
+            ),
+            tickfont=dict(color=text_color),
+            gridcolor=grid_color,
+            zerolinecolor=text_color,
+            zerolinewidth=1.5
+        ),
+        yaxis=dict(
+            tickfont=dict(size=11, color=text_color),
+            automargin=True,
+            autorange="reversed"  # base value at top, progression downwards
+        ),
+        margin=dict(l=180, r=40, t=40, b=40),
+        paper_bgcolor=bg_color,
+        plot_bgcolor=bg_color,
+        height=380
+    )
     return fig

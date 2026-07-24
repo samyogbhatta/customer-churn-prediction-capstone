@@ -1,6 +1,12 @@
+# pyrefly: ignore [missing-import]
+from joblib import numpy_pickle_utils
+# pyrefly: ignore [missing-import]
 import streamlit as st
 import plotly.express as px
+# pyrefly: ignore [missing-import]
+import matplotlib.pyplot as plt
 from src.explainability import plot_summary, plot_mean_bar, plot_dependence, plot_local_shap, plot_waterfall
+from src.theme_utils import is_dark_theme
 
 def render_executive_overview(filtered_df, explainer, df_raw):
     """Render the Executive Overview page.
@@ -14,6 +20,10 @@ def render_executive_overview(filtered_df, explainer, df_raw):
         Full dataset (used for sampling in global explanations).
     """
     st.subheader("Executive Overview & Demographic Insights")
+
+    # Determine theme
+    dark_mode = is_dark_theme()
+    plotly_template = "plotly_dark" if dark_mode else "plotly"
 
     col1, col2 = st.columns(2)
     with col1:
@@ -30,7 +40,7 @@ def render_executive_overview(filtered_df, explainer, df_raw):
             title="Observed Churn Rate by Province (%)",
             labels={"province": "Province", "churn_pct": "Churn Rate (%)"},
         )
-        fig_prov.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        fig_prov.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400)
         st.plotly_chart(fig_prov, use_container_width=True)
 
     with col2:
@@ -49,7 +59,7 @@ def render_executive_overview(filtered_df, explainer, df_raw):
             color_continuous_scale="RdBu_r",
             title="Correlation Matrix (Key Features & Churn)",
         )
-        fig_corr.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=500)
+        fig_corr.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400)
         st.plotly_chart(fig_corr, use_container_width=True)
 
     col3, col4 = st.columns(2)
@@ -64,7 +74,7 @@ def render_executive_overview(filtered_df, explainer, df_raw):
             color_discrete_map={"Loyal": "#2E7D32", "Churned": "#D32F2F"},
             opacity=0.7,
         )
-        fig_sig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        fig_sig.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400)
         st.plotly_chart(fig_sig, use_container_width=True)
 
     with col4:
@@ -79,7 +89,7 @@ def render_executive_overview(filtered_df, explainer, df_raw):
             color_discrete_map={"Loyal": "#2E7D32", "Churned": "#D32F2F"},
             opacity=0.6,
         )
-        fig_comp.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        fig_comp.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400)
         st.plotly_chart(fig_comp, use_container_width=True)
 
     st.subheader("Global Explanations (AI-Driven Feature Importance)")
@@ -106,7 +116,7 @@ def render_executive_overview(filtered_df, explainer, df_raw):
         color="Mean_Abs_SHAP",
         color_continuous_scale="Blues",
     )
-    fig_glob.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(autorange="reversed"), height=400)
+    fig_glob.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(autorange="reversed"), height=400)
 
     # Plot 2: Beeswarm
     fig_summary = plot_summary(shap_vals, X_sample_processed)
@@ -117,6 +127,13 @@ def render_executive_overview(filtered_df, explainer, df_raw):
     fig_display["age"] = df_sample.loc[fig_display.index, "age"]
     fig_dependence = plot_dependence("age", shap_vals, fig_display)
 
+    if fig_summary is not None:
+        fig_summary.set_size_inches(7.0, 4.0)
+    if fig_bar is not None:
+        fig_bar.set_size_inches(7.0, 4.0)
+    if fig_dependence is not None:
+        fig_dependence.set_size_inches(7.0, 4.0)
+
     st.markdown("<hr>", unsafe_allow_html=True)
     col_row1_left, col_row1_right = st.columns(2)
     with col_row1_left:
@@ -125,15 +142,21 @@ def render_executive_overview(filtered_df, explainer, df_raw):
         st.info("**What this shows:** This chart displays the overall predictive importance of features. The longer the bar, the more weight the AI model places on this specific feature when determining whether *any* generic customer will churn or stay loyal.")
     with col_row1_right:
         st.subheader("🐝 Feature Distributions (Beeswarm)")
-        st.plotly_chart(fig_summary, use_container_width=True)
+        if fig_summary is not None:
+            st.pyplot(fig_summary, bbox_inches='tight')
+            plt.close(fig_summary)
         st.info("**What this shows:** Every dot represents a single customer sample. * Position (X-Axis): Dots on the right push risk UP (higher churn); dots on the left pull risk DOWN. * Color: Red represents high values of that feature, blue represents low values.")
     st.markdown("<br>", unsafe_allow_html=True)
     col_row2_left, col_row2_right = st.columns(2)
     with col_row2_left:
         st.subheader("📊 Mean SHAP Importance")
-        st.plotly_chart(fig_bar, use_container_width=True)
+        if fig_bar is not None:
+            st.pyplot(fig_bar, bbox_inches='tight')
+            plt.close(fig_bar)
         st.info("**What this shows:** A refined baseline representation of pure feature magnitude. It measures the average magnitude of change a feature introduces to the model's math, stripping away directionality to reveal raw predictive strength.")
     with col_row2_right:
         st.subheader("📈 Feature Dependence (Age)")
-        st.plotly_chart(fig_dependence, use_container_width=True)
+        if fig_dependence is not None:
+            st.pyplot(fig_dependence, bbox_inches='tight')
+            plt.close(fig_dependence)
         st.info("**What this shows:** This highlights how the customer's exact age correlates to churn behavior. The Y-axis represents the SHAP risk impact. If you see the plot dip below 0 at certain ages, it indicates specific age bands that are mathematically more loyal to the network.")

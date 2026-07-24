@@ -13,6 +13,7 @@ UName = collections.namedtuple('uname_result', ['system', 'node', 'release', 've
 platform.uname = lambda: UName('Windows', 'node', '10', '10.0', 'AMD64', 'Intel')
 platform.machine = lambda: 'AMD64'
 
+# pyrefly: ignore [missing-import]
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -20,16 +21,18 @@ import plotly.graph_objects as go
 import plotly.express as px
 import json
 import joblib
+# pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
 # pyrefly: ignore [missing-import]
 from streamlit_option_menu import option_menu
 
-from src.explainability import ChurnExplainer, plot_dependence, plot_local_shap, plot_mean_bar, plot_summary, plot_waterfall
+from src.explainability import ChurnExplainer, plot_dependence, plot_local_shap, plot_mean_bar, plot_summary, plot_waterfall, plot_plotly_waterfall
 from src.preprocessing import NUMERICAL_COLS, CATEGORICAL_COLS, BINARY_COLS
 from src.components.navigation import render_navigation
 from src.components.report_generator import generate_report_pdf
 from src.utils.excel_export import export_excel
 import src.components.style as style
+from src.theme_utils import is_dark_theme
 
 # Initialize application layout and page parameters
 st.set_page_config(
@@ -45,15 +48,50 @@ def get_base64_of_bin_file(bin_file):
         data = f.read()
     return base64.b64encode(data).decode()
 
+# Check current theme base from streamlit
+dark_mode = is_dark_theme()
+
+if dark_mode:
+    bg_color = "#090d16"
+    card_bg = "#0d1b2e"
+    card_border = "#1e2d45"
+    text_color = "#f1f5f9"
+    sub_text_color = "#94a3b8"
+    input_bg = "#0f172a"
+    title_color = "#ffffff"
+    overlay_opacity = 0.88
+    sidebar_bg = "#0d1b2e"
+    button_bg = "#1e293b"
+    button_border = "#334155"
+    button_hover_bg = "#334155"
+    button_hover_border = "#475569"
+    plotly_template = "plotly_dark"
+else:
+    bg_color = "#f8fafc"
+    card_bg = "#ffffff"
+    card_border = "#e2e8f0"
+    text_color = "#1e293b"
+    sub_text_color = "#64748b"
+    input_bg = "#f1f5f9"
+    title_color = "#0f172a"
+    overlay_opacity = 0.20
+    sidebar_bg = "#f1f5f9"
+    button_bg = "#e2e8f0"
+    button_border = "#cbd5e1"
+    button_hover_bg = "#cbd5e1"
+    button_hover_border = "#94a3b8"
+    plotly_template = "plotly"
+
 def set_app_background(image_path, overlay_opacity=0.88):
     """
     Renders a local image asset behind the application layout canvas 
-    using a base64 string embedding combined with a dark gradient layer.
+    using a base64 string embedding combined with a dynamic gradient layer.
     """
     if not os.path.exists(image_path):
         return
     b64 = get_base64_of_bin_file(image_path)
     ext = image_path.split(".")[-1]
+    overlay_color = "9,13,22" if dark_mode else "248,250,252"
     st.markdown(f"""
     <style>
     /* Full-viewport background image behind everything */
@@ -65,7 +103,7 @@ def set_app_background(image_path, overlay_opacity=0.88):
         width: 100vw;
         height: 100vh;
         background-image:
-            linear-gradient(180deg, rgba(9,13,22,{overlay_opacity}) 0%, rgba(9,13,22,{overlay_opacity}) 100%),
+            linear-gradient(180deg, rgba({overlay_color},{overlay_opacity}) 0%, rgba({overlay_color},{overlay_opacity}) 100%),
             url("data:image/{ext};base64,{b64}");
         background-size: cover;
         background-position: center center;
@@ -73,44 +111,44 @@ def set_app_background(image_path, overlay_opacity=0.88):
         z-index: -1;
     }}
 
-    /* Always use dark background – prevents light-mode white bleed-through */
+    /* Dynamic background color */
     .stApp {{
-        background-color: #090d16 !important;
+        background-color: {bg_color} !important;
     }}
 
     /* Ensure the Streamlit toolbar area also matches */
     header[data-testid="stHeader"] {{
-        background-color: rgba(9,13,22,0.95) !important;
+        background-color: rgba({overlay_color},0.95) !important;
     }}
     </style>
     """, unsafe_allow_html=True)
 
 
 # Apply mapping asset as background layout base
-set_app_background("assets//Nepal map(1).png", overlay_opacity=0.88)
+set_app_background("assets//Nepal map(1).png", overlay_opacity=overlay_opacity)
 
 # Inject custom global theme styles for dashboard panels, typography, and select elements
-st.markdown("""
+st.markdown(f"""
 <style>
-    .stApp {
-        color: #f1f5f9 !important;
-    }
+    .stApp {{
+        color: {text_color} !important;
+    }}
     
-    div[data-testid="stVerticalBlock"] > div {
+    div[data-testid="stVerticalBlock"] > div {{
         background-color: transparent;
-    }
+    }}
 
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #0d1b2e !important;
-        border: 1px solid #1e2d45 !important;
+    div[data-testid="stVerticalBlockBorderWrapper"] {{
+        background-color: {card_bg} !important;
+        border: 1px solid {card_border} !important;
         border-radius: 10px !important;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, {"0.45" if dark_mode else "0.08"});
         padding: 4px 8px 14px 8px !important;
         margin-bottom: 14px;
-    }
+    }}
 
-    .chart-box-title {
-        color: #ffffff !important;
+    .chart-box-title {{
+        color: {title_color} !important;
         font-size: 0.95rem;
         font-weight: 700;
         text-transform: uppercase;
@@ -118,90 +156,128 @@ st.markdown("""
         text-align: center;
         padding: 8px 0 2px 0;
         margin-bottom: 2px;
-    }
+    }}
     
-    .telemetry-row-container {
+    .telemetry-row-container {{
         margin-bottom: 20px !important;
         padding: 0px !important;
-    }
+    }}
 
-    .telemetry-text-wrapper {
+    .telemetry-text-wrapper {{
         text-align: center !important;
         width: 100% !important;
         display: block;
-    }
+    }}
 
-    .telemetry-title {
-        color: #ffffff !important;
+    .telemetry-title {{
+        color: {title_color} !important;
         font-size: 0.85rem !important;
         font-weight: 700 !important;
         text-transform: uppercase !important;
         letter-spacing: 0.05em !important;
         margin-bottom: 2px !important;
         text-align: center !important;
-    }
+    }}
     
-    .telemetry-subtitle {
-        color: #94a3b8 !important;
+    .telemetry-subtitle {{
+        color: {sub_text_color} !important;
         font-size: 0.75rem !important;
         font-weight: 500 !important;
         margin-top: 0px !important;
         text-align: center !important;
-    }
+    }}
     
-    div[data-baseweb="select"], div[data-baseweb="input"] {
-        background-color: #0f172a !important;
+    div[data-baseweb="select"], div[data-baseweb="input"] {{
+        background-color: {input_bg} !important;
         border-radius: 6px;
-    }
+    }}
     
-    hr {
-        border-color: #1e293b !important;
+    hr {{
+        border-color: {card_border} !important;
         margin: 2rem 0;
-    }
+    }}
 
-    h1, h2, h3, h4, h5, h6 {
-        color: #ffffff !important;
+    h1, h2, h3, h4, h5, h6 {{
+        color: {title_color} !important;
         font-weight: 700 !important;
-    }
+    }}
 
-    /* Force option-menu nav to always stay dark */
+    /* Force option-menu nav to match theme */
     nav[data-testid="stHorizontalBlock"],
-    ul[class*="nav"] {
-        background-color: #0d1b2e !important;
-    }
+    ul[class*="nav"] {{
+        background-color: {sidebar_bg} !important;
+    }}
 
-    /* Force all Streamlit buttons to dark style */
-    .stButton > button {
-        background-color: #1e293b !important;
-        color: #f1f5f9 !important;
-        border: 1px solid #334155 !important;
+    /* Force all Streamlit buttons to theme style */
+    .stButton > button {{
+        background-color: {button_bg} !important;
+        color: {text_color} !important;
+        border: 1px solid {button_border} !important;
         border-radius: 8px !important;
-    }
-    .stButton > button:hover {
-        background-color: #334155 !important;
-        border-color: #475569 !important;
-    }
+    }}
+    .stButton > button:hover {{
+        background-color: {button_hover_bg} !important;
+        border-color: {button_hover_border} !important;
+    }}
 
-    /* Force selectboxes and inputs to dark */
-    div[data-baseweb="select"] * {
-        background-color: #0f172a !important;
-        color: #f1f5f9 !important;
-    }
-    div[data-baseweb="input"] input {
-        background-color: #0f172a !important;
-        color: #f1f5f9 !important;
-    }
+    /* Force selectboxes and inputs to theme colors */
+    div[data-baseweb="select"] * {{
+        background-color: {input_bg} !important;
+        color: {text_color} !important;
+    }}
+    div[data-baseweb="input"] input {{
+        background-color: {input_bg} !important;
+        color: {text_color} !important;
+    }}
 
-    /* Force sidebar always dark */
-    section[data-testid="stSidebar"] {
-        background-color: #0d1b2e !important;
-        color: #f1f5f9 !important;
-    }
+    /* Force sidebar to match theme */
+    section[data-testid="stSidebar"] {{
+        background-color: {sidebar_bg} !important;
+        color: {text_color} !important;
+    }}
 
-    /* Force all paragraph / label text to be light */
-    p, label, span, .stMarkdown {
-        color: #e2e8f0 !important;
-    }
+    /* Force all paragraph / label text to match theme */
+    p, label, span, .stMarkdown {{
+        color: {text_color} !important;
+    }}
+
+    /* Equalize all chart card heights and layouts */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.is-chart-card) {{
+        height: 480px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        justify-content: flex-start !important;
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.is-chart-card) > div {{
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.is-chart-card) .stPlotlyChart {{
+        height: 380px !important;
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.is-chart-card) img,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.is-chart-card) div[data-testid="stImage"],
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.is-chart-card) .stPyplot,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.is-chart-card) div[data-testid="stPyplot"] {{
+        height: 360px !important;
+        max-height: 360px !important;
+        width: auto !important;
+        max-width: 100% !important;
+        object-fit: contain !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        margin: 0 auto !important;
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.is-chart-card) div[role="alert"] {{
+        height: 360px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin: 0 !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -212,6 +288,7 @@ from contextlib import contextmanager
 def chart_card(title=None):
     """Context manager to render content blocks inside styled bordered container wrappers."""
     with st.container(border=True):
+        st.markdown('<div class="is-chart-card"></div>', unsafe_allow_html=True)
         if title:
             st.markdown(f'<div class="chart-box-title">{title}</div>', unsafe_allow_html=True)
         yield
@@ -652,16 +729,16 @@ app_mode = option_menu(
     styles={
         "container": {
             "padding": "4px 8px !important", 
-            "background-color": "#0d1b2e !important",
+            "background-color": f"{sidebar_bg} !important",
             "border-radius": "12px !important",
-            "border": "1px solid rgba(255, 255, 255, 0.08) !important",
-            "box-shadow": "0px 8px 24px rgba(0, 0, 0, 0.5) !important",
+            "border": f"1px solid {card_border} !important",
+            "box-shadow": "0px 8px 24px rgba(0, 0, 0, 0.5) !important" if dark_mode else "none !important",
             "margin-bottom": "25px !important",
             "display": "flex !important",
             "justify-content": "space-around !important"
         },
         "icon": {
-            "color": "#94a3b8 !important", 
+            "color": f"{sub_text_color} !important", 
             "font-size": "14px !important",
             "transition": "color 0.2s ease !important"
         }, 
@@ -669,7 +746,7 @@ app_mode = option_menu(
             "font-size": "13px !important", 
             "text-align": "center !important", 
             "padding": "10px 20px !important",
-            "color": "#94a3b8 !important",
+            "color": f"{sub_text_color} !important",
             "font-weight": "700 !important",
             "text-transform": "uppercase !important",
             "letter-spacing": "0.06em !important",
@@ -682,7 +759,7 @@ app_mode = option_menu(
         "nav-link-selected": {
             "background": "rgba(225, 29, 72, 0.15) !important",
             "border-bottom": "2px solid #e11d48 !important", 
-            "color": "#ffffff !important",
+            "color": f"{title_color} !important",
             "font-weight": "700 !important",
             "border-radius": "8px !important",
             "box-shadow": "none !important",
@@ -744,32 +821,37 @@ if app_mode != "Simulator":
     if total_customers > 0:
         high_risk_revenue = filtered_df.loc[filtered_df["churn_probability"] >= active_elev_thresh, "avg_recharge_amount_npr"].sum()
 
-    st.markdown("""
+    indicator_bg = "rgba(255, 255, 255, 0.05)" if dark_mode else "rgba(255, 255, 255, 0.85)"
+    indicator_border = "rgba(255, 255, 255, 0.15)" if dark_mode else "rgba(0, 0, 0, 0.1)"
+    indicator_shadow = "0px 14px 32px rgba(0, 0, 0, 0.45)" if dark_mode else "0px 14px 32px rgba(0, 0, 0, 0.08)"
+    gauge_bar_bgcolor = "rgba(255, 255, 255, 0.12)" if dark_mode else "rgba(0, 0, 0, 0.08)"
+
+    st.markdown(f"""
         <style>
-            div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] > div:nth-child(2) div[data-testid="stVerticalBlockBorderWithHeader"] {
-                background: rgba(255, 255, 255, 0.14) !important;       
-                background-color: rgba(255, 255, 255, 0.12) !important;  
+            div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] > div:nth-child(2) div[data-testid="stVerticalBlockBorderWithHeader"] {{
+                background: {indicator_bg} !important;       
+                background-color: {indicator_bg} !important;  
                 backdrop-filter: blur(25px) saturate(220%) !important;  
                 -webkit-backdrop-filter: blur(25px) saturate(220%) !important;
-                border: 1px solid rgba(255, 255, 255, 0.45) !important; 
-                box-shadow: 0px 14px 32px rgba(0, 0, 0, 0.45) !important;
+                border: 1px solid {indicator_border} !important; 
+                box-shadow: {indicator_shadow} !important;
                 border-radius: 16px !important;                          
                 padding: 24px 16px !important;                           
-            }
+            }}
 
             div[data-testid="stForm"] div[data-testid="stVerticalBlockBorderWithHeader"],
-            div[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWithHeader"] {
+            div[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWithHeader"] {{
                 background: transparent !important;
                 backdrop-filter: none !important;
                 -webkit-backdrop-filter: none !important;
-                border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                border: 1px solid {card_border} !important;
                 box-shadow: none !important;
-            }
+            }}
 
-            .stPlotlyChart {
+            .stPlotlyChart {{
                 background-color: transparent !important;
                 background: transparent !important;
-            }
+            }}
         </style>
     """, unsafe_allow_html=True)
 
@@ -778,81 +860,82 @@ if app_mode != "Simulator":
         
         with kpi_cols[0]:
             with st.container(border=True): 
-                st.markdown('<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Churn Risk Overview</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: {title_color}; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Churn Risk Overview</div>', unsafe_allow_html=True)
                 
                 fig1 = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=overall_churn_rate,
-                    number={'suffix': "%", 'font': {'size': 24, 'color': '#ffffff', 'weight': 'bold'}},
+                    number={'suffix': "%", 'font': {'size': 24, 'color': title_color, 'weight': 'bold'}},
                     gauge={
                         'axis': {'range': [0, 100], 'visible': False},
                         'bar': {'color': "#cf0a0a"}, 
-                        'bgcolor': "rgba(255, 255, 255, 0.12)"
+                        'bgcolor': gauge_bar_bgcolor
                     },
                     domain={'x': [0, 1], 'y': [0.15, 1]}
                 ))
-                fig1.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
+                fig1.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
                 st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
-                st.markdown('<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Observed Segment</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: {sub_text_color}; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Observed Segment</div>', unsafe_allow_html=True)
 
         with kpi_cols[1]:
             with st.container(border=True):
-                st.markdown('<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Total Customers</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: {title_color}; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Total Customers</div>', unsafe_allow_html=True)
                 
                 max_base_scale = 5000 if total_customers <= 5000 else (total_customers * 1.5)
                 fig2 = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=total_customers,
-                    number={'valueformat': ",", 'font': {'size': 24, 'color': '#ffffff', 'weight': 'bold'}},
+                    number={'valueformat': ",", 'font': {'size': 24, 'color': title_color, 'weight': 'bold'}},
                     gauge={
                         'axis': {'range': [0, max_base_scale], 'visible': False},
                         'bar': {'color': "#2563eb"}, 
-                        'bgcolor': "rgba(255, 255, 255, 0.12)"
+                        'bgcolor': gauge_bar_bgcolor
                     },
                     domain={'x': [0, 1], 'y': [0.15, 1]}
                 ))
-                fig2.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
+                fig2.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
                 st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
-                st.markdown('<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Active Base</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: {sub_text_color}; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Active Base</div>', unsafe_allow_html=True)
 
         with kpi_cols[2]:
             with st.container(border=True):
-                st.markdown(f'<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">{accuracy_label}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: {title_color}; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">{accuracy_label}</div>', unsafe_allow_html=True)
                 
                 fig3 = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=model_accuracy * 100,
-                    number={'suffix': "%", 'font': {'size': 24, 'color': '#ffffff', 'weight': 'bold'}},
+                    number={'suffix': "%", 'font': {'size': 24, 'color': title_color, 'weight': 'bold'}},
                     gauge={
                         'axis': {'range': [0, 100], 'visible': False},
                         'bar': {'color': "#7c3aed" if accuracy_source == "Avg Confidence" else "#cf0a0a"}, 
-                        'bgcolor': "rgba(255, 255, 255, 0.12)"
+                        'bgcolor': gauge_bar_bgcolor
                     },
                     domain={'x': [0, 1], 'y': [0.15, 1]}
                 ))
-                fig3.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
+                fig3.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
                 st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
-                st.markdown(f'<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Pipeline Confidence · {accuracy_source}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: {sub_text_color}; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Pipeline Confidence · {accuracy_source}</div>', unsafe_allow_html=True)
 
         with kpi_cols[3]:
             with st.container(border=True):
-                st.markdown('<div style="text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Revenue at Risk</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: {title_color}; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -10px;">Revenue at Risk</div>', unsafe_allow_html=True)
                 
                 max_rev_scale = 100000 if high_risk_revenue <= 100000 else (high_risk_revenue * 1.5)
                 fig4 = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=high_risk_revenue,
-                    number={'prefix': "Rs. ", 'valueformat': ",.0f", 'font': {'size': 20, 'color': '#ffffff', 'weight': 'bold'}},
+                    number={'prefix': "Rs. ", 'valueformat': ",.0f", 'font': {'size': 20, 'color': title_color, 'weight': 'bold'}},
                     gauge={
                         'axis': {'range': [0, max_rev_scale], 'visible': False},
                         'bar': {'color': "#2563eb"}, 
-                        'bgcolor': "rgba(255, 255, 255, 0.12)"
+                        'bgcolor': gauge_bar_bgcolor
                     },
                     domain={'x': [0, 1], 'y': [0.15, 1]}
                 ))
-                fig4.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
+                fig4.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
                 st.plotly_chart(fig4, use_container_width=True, config={'displayModeBar': False})
-                st.markdown('<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">NPR Vulnerable</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center; color: {sub_text_color}; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">NPR Vulnerable</div>', unsafe_allow_html=True)
+
         
     overall_summary = {
         "total_customers": total_customers,
@@ -953,7 +1036,7 @@ if app_mode == "Overview":
                 title="Observed Churn Rate by Province (%)",
                 labels={"province": "Province", "churn_pct": "Churn Rate (%)"}
             )
-            fig_prov.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", title=None)
+            fig_prov.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400, title=None)
             with chart_card("Observed Churn Rate by Province (%)"):
                 st.plotly_chart(fig_prov, use_container_width=True)
 
@@ -974,7 +1057,7 @@ if app_mode == "Overview":
                 color_continuous_scale=[[0, '#dc143c'], [0.5, '#ffffff'], [1, '#003893']],
                 title="Correlation Matrix (Key Features & Churn)"
             )
-            fig_corr.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=500, title=None)
+            fig_corr.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400, title=None)
             with chart_card("Correlation Matrix (Key Features & Churn)"):
                 st.plotly_chart(fig_corr, use_container_width=True)
 
@@ -989,7 +1072,7 @@ if app_mode == "Overview":
                 color_discrete_map={"Loyal": "#003893", "Churned": "#dc143c"},
                 opacity=0.7
             )
-            fig_sig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", title=None)
+            fig_sig.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400, title=None)
             with chart_card("Signal Strength (dBm) Distribution by Churn"):
                 st.plotly_chart(fig_sig, use_container_width=True)
             
@@ -1006,7 +1089,7 @@ if app_mode == "Overview":
                     color_discrete_map={"Loyal": "#003893", "Churned": "#dc143c"},
                     opacity=0.6
                 )
-                fig_comp.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", title=None)
+                fig_comp.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400, title=None)
                 with chart_card("Complaints Density vs Resolution Time (Hours)"):
                     st.plotly_chart(fig_comp, use_container_width=True)
             else:
@@ -1040,89 +1123,140 @@ if app_mode == "Overview":
             color="Mean_Abs_SHAP",
             color_continuous_scale=[[0, '#003893'], [1, '#dc143c']]
         )
-        fig_glob.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(autorange="reversed"), height=400)
+        fig_glob.update_coloraxes(showscale=False)
+        fig_glob.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(autorange="reversed"), height=400, margin=dict(l=180, r=40, t=40, b=40))
         
-        # Explicit dark-theme canvas mappings for matplotlib plots
-        plt.style.use('dark_background')
-        plt.rcParams['figure.facecolor'] = '#090d16'
-        plt.rcParams['axes.facecolor'] = '#090d16'
-        plt.rcParams['text.color'] = '#ffffff'
-        plt.rcParams['axes.labelcolor'] = '#ffffff'
-        plt.rcParams['xtick.color'] = '#ffffff'
-        plt.rcParams['ytick.color'] = '#ffffff'
+        # Reconstruct Beeswarm Plot as Plotly Strip Plot
+        top_feats = importance_df.head(10)["Feature"].tolist()
+        records = []
+        for feat in top_feats:
+            col_name = next((c for c in X_sample_processed.columns if c.lower() == feat.lower().replace("_", " ")), None)
+            if col_name is not None:
+                col_idx = list(X_sample_processed.columns).index(col_name)
+                s_vals = shap_vals[:, col_idx]
+                f_vals = X_sample_processed[col_name].values
+                min_f = np.min(f_vals)
+                max_f = np.max(f_vals)
+                norm_f = (f_vals - min_f) / (max_f - min_f) if max_f > min_f else np.zeros_like(f_vals)
+                for i in range(len(s_vals)):
+                    records.append({
+                        "Feature": col_name,
+                        "SHAP Value": s_vals[i],
+                        "Feature Value": norm_f[i]
+                    })
+        beeswarm_df = pd.DataFrame(records)
         
-        plt.rcParams['font.size'] = 7.5
-        plt.rcParams['axes.labelsize'] = 6.8     
-        plt.rcParams['xtick.labelsize'] = 8.0
-        plt.rcParams['ytick.labelsize'] = 8.0
-        plt.rcParams['figure.autolayout'] = True
-        
-        fig_summary = plot_summary(shap_vals, X_sample_processed)
-        fig_bar = plot_mean_bar(shap_vals, X_sample_processed)
-        
-        for fig in [fig_summary, fig_bar]:
-            if fig is not None:
-                fig.set_size_inches(6.0, 4.0)
-                fig.set_dpi(100)
-                for ax in fig.get_axes():
-                    ax.set_facecolor('#090d16')
-                    ax.grid(False)
-                    ax.tick_params(colors='#ffffff', which='both', labelsize=8.0)
-                    plt.setp(ax.get_yticklabels(), color='#ffffff', fontsize=8.0)
-                    plt.setp(ax.get_xticklabels(), color='#ffffff', fontsize=8.0)
-                    ax.xaxis.label.set_size(6.8)  
-                    ax.yaxis.label.set_size(8.0)  
-                    ax.xaxis.label.set_color('#ffffff')
-                    ax.yaxis.label.set_color('#ffffff')
-                
-                if len(fig.get_axes()) >= 2:
-                    cb_ax = fig.get_axes()[-1]
-                    cb_ax.yaxis.label.set_size(7.0)
-                    cb_ax.yaxis.label.set_color('#ffffff')
-                    cb_ax.tick_params(labelcolor='#ffffff', colors='#ffffff', labelsize=7.5)
-        
-        fig_display = X_sample_processed.copy()
-        
-        if "Age" in fig_display.columns:
-            fig_dependence = plot_dependence("Age", shap_vals, fig_display) 
+        if not beeswarm_df.empty:
+            unique_feats = list(beeswarm_df["Feature"].unique())
+            feat_map = {feat: i for i, feat in enumerate(unique_feats)}
+            beeswarm_df["Feature_Idx"] = beeswarm_df["Feature"].map(feat_map)
+            np.random.seed(42)
+            beeswarm_df["Feature_Jittered"] = beeswarm_df["Feature_Idx"] + np.random.uniform(-0.15, 0.15, size=len(beeswarm_df))
+            
+            fig_summary = px.scatter(
+                beeswarm_df,
+                x="SHAP Value",
+                y="Feature_Jittered",
+                color="Feature Value",
+                color_continuous_scale=[[0, '#003893'], [1, '#dc143c']],
+                title="Feature Distributions (Beeswarm)"
+            )
+            fig_summary.update_layout(
+                yaxis=dict(
+                    tickmode='array',
+                    tickvals=list(range(len(unique_feats))),
+                    ticktext=unique_feats,
+                    title="Feature"
+                )
+            )
         else:
-            fallback_feat = X_sample_processed.columns[0]
-            fig_dependence = plot_dependence(fallback_feat, shap_vals, fig_display)
-
-        if fig_dependence is not None:
-            fig_dependence.set_size_inches(7.5, 5.0) 
-            for ax in fig_dependence.get_axes():
-                ax.set_facecolor('#090d16')
-                ax.tick_params(colors='#ffffff', which='both', labelsize=8.5)
-                plt.setp(ax.get_yticklabels(), color='#ffffff', fontsize=8.5)
-                plt.setp(ax.get_xticklabels(), color='#ffffff', fontsize=8.5)
-                ax.xaxis.label.set_color('#ffffff')
-                ax.yaxis.label.set_color('#ffffff')
+            fig_summary = px.scatter(
+                title="Feature Distributions (Beeswarm)"
+            )
+        fig_summary.update_layout(
+            template=plotly_template, 
+            paper_bgcolor="rgba(0,0,0,0)", 
+            plot_bgcolor="rgba(0,0,0,0)", 
+            height=400, 
+            margin=dict(l=180, r=40, t=40, b=40)
+        )
+        fig_summary.update_coloraxes(colorbar_title="Value", showscale=True)
+        
+        # Reconstruct Mean SHAP Importance as Plotly Bar Plot
+        fig_bar = px.bar(
+            importance_df.head(15),
+            y="Clean_Feature",
+            x="Mean_Abs_SHAP",
+            orientation="h",
+            title="Mean SHAP Importance",
+            color="Mean_Abs_SHAP",
+            color_continuous_scale=[[0, '#003893'], [1, '#dc143c']]
+        )
+        fig_bar.update_coloraxes(showscale=False)
+        fig_bar.update_layout(
+            template=plotly_template, 
+            paper_bgcolor="rgba(0,0,0,0)", 
+            plot_bgcolor="rgba(0,0,0,0)", 
+            yaxis=dict(autorange="reversed"), 
+            height=400, 
+            margin=dict(l=180, r=40, t=40, b=40)
+        )
+        
+        # Reconstruct Feature Dependence Plot as Plotly Scatter Plot
+        fig_display = X_sample_processed.copy()
+        if "Age" in fig_display.columns:
+            dep_feat = "Age"
+        else:
+            dep_feat = X_sample_processed.columns[0]
+            
+        dep_col_idx = list(X_sample_processed.columns).index(dep_feat)
+        dep_x_vals = fig_display[dep_feat].values
+        dep_y_vals = shap_vals[:, dep_col_idx]
+        
+        dep_df = pd.DataFrame({
+            dep_feat: dep_x_vals,
+            "SHAP Value": dep_y_vals,
+            "Churn": df_sample["churn"].map({0: "Loyal", 1: "Churned"}) if "churn" in df_sample.columns else "Unknown"
+        })
+        
+        fig_dependence = px.scatter(
+            dep_df,
+            x=dep_feat,
+            y="SHAP Value",
+            color="Churn",
+            title=f"Feature Dependence ({dep_feat})",
+            color_discrete_map={"Loyal": "#003893", "Churned": "#dc143c"},
+            opacity=0.7
+        )
+        fig_dependence.update_layout(
+            template=plotly_template, 
+            paper_bgcolor="rgba(0,0,0,0)", 
+            plot_bgcolor="rgba(0,0,0,0)", 
+            height=400, 
+            margin=dict(l=50, r=40, t=40, b=40)
+        )
                 
         st.markdown("<hr>", unsafe_allow_html=True)
         
         col_row1_left, col_row1_right = st.columns(2)
         with col_row1_left:
-            fig_glob.update_layout(height=450, margin=dict(l=20, r=20, t=30, b=40))
+            fig_glob.update_layout(height=400, margin=dict(l=180, r=40, t=40, b=40))
             with chart_card("Top 15 Global Features"):
                 st.plotly_chart(fig_glob, use_container_width=True)
             
         with col_row1_right:
             with chart_card("Feature Distributions (Beeswarm)"):
-                st.pyplot(fig_summary, bbox_inches='tight')
-                plt.close(fig_summary)
+                st.plotly_chart(fig_summary, use_container_width=True)
             
         st.markdown("<br>", unsafe_allow_html=True) 
         
         col_row2_left, col_row2_right = st.columns(2)
         with col_row2_left:
             with chart_card("Mean SHAP Importance"):
-                st.pyplot(fig_bar, bbox_inches='tight')
-                plt.close(fig_bar)
+                st.plotly_chart(fig_bar, use_container_width=True)
         with col_row2_right:
             with chart_card("Feature Dependence (Age)"):
-                st.pyplot(fig_dependence, bbox_inches='tight')
-                plt.close(fig_dependence)
+                st.plotly_chart(fig_dependence, use_container_width=True)
 
         st.markdown("""
         <style>
@@ -1288,11 +1422,11 @@ elif app_mode == "Customer Details":
                 value=prob * 100,
                 domain={'x': [0, 1], 'y': [0, 1]},
                 gauge={
-                    'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#f8fafc"},
+                    'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': text_color},
                     'bar': {'color': "#dc143c" if prob >= active_crit_thresh else ("#EF6C00" if prob >= active_elev_thresh else "#003893")},
-                    'bgcolor': "#0f172a",
+                    'bgcolor': input_bg,
                     'borderwidth': 1,
-                    'bordercolor': "#1e293b",
+                    'bordercolor': card_border,
                     'steps': [
                         {'range': [0, active_elev_thresh*100], 'color': 'rgba(0, 56, 147, 0.15)'},
                         {'range': [active_elev_thresh*100, active_crit_thresh*100], 'color': 'rgba(239, 108, 0, 0.15)'},
@@ -1300,7 +1434,7 @@ elif app_mode == "Customer Details":
                     ]
                 }
             ))
-            gauge_fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260, margin=dict(l=30, r=30, t=30, b=30))
+            gauge_fig.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260, margin=dict(l=30, r=30, t=30, b=30))
             st.plotly_chart(gauge_fig, use_container_width=True)
             
             actual_churn = customer_row["churn"].values[0]
@@ -1313,21 +1447,92 @@ elif app_mode == "Customer Details":
             else:
                 st.success(f"🟢 **LOW CHURN RISK** (Probability < {int(active_elev_thresh*100)}%): Customer demonstrates healthy activity levels.")
 
+            fig_waterfall = plot_plotly_waterfall(explanation["shap_values_obj"], max_display=8, plotly_template=plotly_template, theme_dark=dark_mode)
+            st.plotly_chart(fig_waterfall, use_container_width=True)
+
         with col_pred2:
             st.markdown("### Feature Contributions Breakdown")
             st.markdown("Features pushing simulated risk **UP** are styled in Crimson 🔴; mitigating features are in Dark Blue 🔵.")
             
-            local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
+            local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=dark_mode)
             if hasattr(local_shap_fig, "update_traces"):
                 local_shap_fig.update_traces(marker_color=np.where(contributions.head(8)["SHAP_Value"] > 0, "#dc143c", "#003893"))
             st.plotly_chart(local_shap_fig, use_container_width=True)
 
-            st.subheader("Prediction Path (Waterfall Plot)")
-            plt.style.use('dark_background')
-            plt.rcParams['figure.facecolor'] = '#0a192f'
-            fig_waterfall = plot_waterfall(explanation["shap_values_obj"], None, max_display=8)
-            st.pyplot(fig_waterfall)
-            plt.close(fig_waterfall)
+            st.markdown("### Cohort Benchmarks Comparison")
+            st.markdown("Relative comparison of this customer's key usage metrics against loyal and churned cohorts.")
+            
+            comp_features = {
+                "calls_min_30d": "Call Mins",
+                "avg_recharge_amount_npr": "Recharge (Rs.)",
+                "call_drop_rate": "Call Drops",
+                "num_complaints_30d": "Complaints",
+                "inactive_days": "Inactive Days"
+            }
+            
+            full_df = st.session_state.uploaded_df
+            loyal_cohort = full_df[full_df["churn"] == 0]
+            churn_cohort = full_df[full_df["churn"] == 1]
+            
+            comp_records = []
+            for col, label in comp_features.items():
+                if col in full_df.columns:
+                    cust_val = customer_row[col].values[0]
+                    loyal_avg = loyal_cohort[col].mean()
+                    churn_avg = churn_cohort[col].mean()
+                    
+                    if col == "call_drop_rate":
+                        cust_val *= 100
+                        loyal_avg *= 100
+                        churn_avg *= 100
+                    
+                    max_val = max(cust_val, loyal_avg, churn_avg, 1e-5)
+                    
+                    comp_records.append({
+                        "Metric": label,
+                        "Type": "This Customer",
+                        "Relative Score": cust_val / max_val,
+                        "Value": f"{cust_val:.1f}" if col != "num_complaints_30d" and col != "inactive_days" else f"{int(cust_val)}"
+                    })
+                    comp_records.append({
+                        "Metric": label,
+                        "Type": "Loyal Cohort Avg",
+                        "Relative Score": loyal_avg / max_val,
+                        "Value": f"{loyal_avg:.1f}" if col != "num_complaints_30d" and col != "inactive_days" else f"{loyal_avg:.1f}"
+                    })
+                    comp_records.append({
+                        "Metric": label,
+                        "Type": "Churned Cohort Avg",
+                        "Relative Score": churn_avg / max_val,
+                        "Value": f"{churn_avg:.1f}" if col != "num_complaints_30d" and col != "inactive_days" else f"{churn_avg:.1f}"
+                    })
+            
+            if comp_records:
+                comp_df = pd.DataFrame(comp_records)
+                fig_comp = px.bar(
+                    comp_df,
+                    x="Metric",
+                    y="Relative Score",
+                    color="Type",
+                    barmode="group",
+                    text="Value",
+                    color_discrete_map={
+                        "This Customer": "#EF6C00",
+                        "Loyal Cohort Avg": "#003893",
+                        "Churned Cohort Avg": "#dc143c"
+                    },
+                    title="Behavior vs Cohort Benchmarks (Relative)"
+                )
+                fig_comp.update_layout(
+                    template=plotly_template,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    height=350,
+                    yaxis=dict(showticklabels=False, title="Relative Level"),
+                    margin=dict(l=40, r=40, t=40, b=40)
+                )
+                fig_comp.update_traces(textposition='outside')
+                st.plotly_chart(fig_comp, use_container_width=True)
 
         st.markdown("###  Diagnostic Summary (Key Reasons)")
         risk_reasons = get_human_readable_reasons(contributions, top_n=3, mode="risk")
@@ -1443,11 +1648,11 @@ elif app_mode == "Simulator":
             value=prob * 100,
             domain={'x': [0, 1], 'y': [0, 1]},
             gauge={
-                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#f8fafc"},
+                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': text_color},
                 'bar': {'color': "#dc143c" if prob >= active_crit_thresh else ("#EF6C00" if prob >= active_elev_thresh else "#003893")},
-                'bgcolor': "#0f172a",
+                'bgcolor': input_bg,
                 'borderwidth': 1,
-                'bordercolor': "#1e293b",
+                'bordercolor': card_border,
                 'steps': [
                     {'range': [0, active_elev_thresh*100], 'color': 'rgba(0, 56, 147, 0.15)'},
                     {'range': [active_elev_thresh*100, active_crit_thresh*100], 'color': 'rgba(239, 108, 0, 0.15)'},
@@ -1455,7 +1660,7 @@ elif app_mode == "Simulator":
                 ]
             }
         ))
-        gauge_fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260, margin=dict(l=30, r=30, t=30, b=30))
+        gauge_fig.update_layout(template=plotly_template, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260, margin=dict(l=30, r=30, t=30, b=30))
         st.plotly_chart(gauge_fig, use_container_width=True)
         
         st.caption(f"🎯 Active Strictness Level: **{preset_data['label']}** (Churn Cutoff: **{int(active_churn_thresh*100)}%**)")
@@ -1470,7 +1675,7 @@ elif app_mode == "Simulator":
     with col_sim_res2:
         st.markdown("### Simulated Feature Contributions")
         st.markdown("Features pushing simulated risk **UP** are styled in Crimson 🔴; mitigating features are in Dark Blue 🔵.")
-        local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=True)
+        local_shap_fig = plot_local_shap(contributions, max_display=8, theme_dark=dark_mode)
         if hasattr(local_shap_fig, "update_traces"):
             local_shap_fig.update_traces(marker_color=np.where(contributions.head(8)["SHAP_Value"] > 0, "#dc143c", "#003893"))
         st.plotly_chart(local_shap_fig, use_container_width=True)
