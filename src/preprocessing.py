@@ -126,6 +126,134 @@ def create_preprocessing_pipeline():
         ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False))
     ])
     
+import os
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+import joblib
+
+# Core feature definitions for the Nepal Telecom Churn dataset schema
+NUMERICAL_COLS = [
+    "age", "tenure_days", "calls_min_30d", "sms_count_30d", "data_gb_30d", 
+    "night_usage_pct", "last_recharge_days_ago", "avg_recharge_amount_npr", 
+    "recharge_count_30d", "monthly_bill_npr", "signal_strength_dbm", "call_drop_rate", 
+    "avg_data_speed_mbps", "num_complaints_30d", "avg_resolution_time_hours", 
+    "usage_drop_pct", "recharge_drop_pct", "inactive_days",
+    # Engineered Features
+    "calls_per_day", "data_gb_per_day", "recharges_per_day",
+    "avg_recharge_per_transaction", "complaint_density", "call_drop_severity",
+    "total_active_packs", "churn_risk_interaction"
+]
+
+CATEGORICAL_COLS = [
+    "gender", "province", "district_type", "sim_type", "recharge_segment"
+]
+
+BINARY_COLS = [
+    "data_pack_active", "voice_pack_active", "vas_active", "roaming_active"
+]
+
+def load_data(file_path):
+    """Loads dataset from CSV file safely."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Dataset file not found at {file_path}")
+    return pd.read_csv(file_path)
+
+def sanitize_and_align_columns(df):
+    """Aligns uploaded dataset column names and fills missing expected columns with sensible defaults."""
+    df_out = df.copy()
+    
+    # Case-insensitive column matching
+    col_map = {c.lower().strip(): c for c in df_out.columns}
+    
+    # Map common column aliases if uploaded
+    aliases = {
+        "cust_id": "customer_id",
+        "id": "customer_id",
+        "district_name": "district",
+        "recharge_amt": "avg_recharge_amount_npr",
+        "monthly_bill": "monthly_bill_npr"
+    }
+    
+    rename_dict = {}
+    for alias, target in aliases.items():
+        if alias in col_map and target not in df_out.columns:
+            rename_dict[col_map[alias]] = target
+    if rename_dict:
+        df_out = df_out.rename(columns=rename_dict)
+        
+    # Ensure all required raw numerical columns exist; if missing in an uploaded file, fill with default 0
+    raw_numerics = [
+        "age", "tenure_days", "calls_min_30d", "sms_count_30d", "data_gb_30d", 
+        "night_usage_pct", "last_recharge_days_ago", "avg_recharge_amount_npr", 
+        "recharge_count_30d", "monthly_bill_npr", "signal_strength_dbm", "call_drop_rate", 
+        "avg_data_speed_mbps", "num_complaints_30d", "avg_resolution_time_hours", 
+        "usage_drop_pct", "recharge_drop_pct", "inactive_days"
+    ]
+    for col in raw_numerics:
+        if col not in df_out.columns:
+            df_out[col] = 0.0
+            
+    # Binary columns default to 0
+    for col in BINARY_COLS:
+        if col not in df_out.columns:
+            df_out[col] = 0
+            
+    # Categorical columns default to mode/Unknown
+    for col in CATEGORICAL_COLS:
+        if col not in df_out.columns:
+            df_out[col] = "Unknown"
+            
+    return df_out
+
+def engineer_features(df):
+    """Generates interaction and derived features safely, avoiding divide-by-zero errors."""
+    df_out = sanitize_and_align_columns(df)
+    
+    # 1. Usage intensity
+    df_out["calls_per_day"] = df_out["calls_min_30d"].astype(float) / 30.0
+    df_out["data_gb_per_day"] = df_out["data_gb_30d"].astype(float) / 30.0
+    df_out["recharges_per_day"] = df_out["recharge_count_30d"].astype(float) / 30.0
+    
+    # 2. Recharge efficiency (safe division using +1)
+    df_out["avg_recharge_per_transaction"] = df_out["avg_recharge_amount_npr"].astype(float) / (df_out["recharge_count_30d"].astype(float) + 1.0)
+    
+    # 3. Quality / complaint density
+    df_out["complaint_density"] = df_out["num_complaints_30d"].astype(float) * df_out["avg_resolution_time_hours"].astype(float)
+    df_out["call_drop_severity"] = df_out["call_drop_rate"].astype(float) * df_out["num_complaints_30d"].astype(float)
+    
+    # 4. Total services active
+    df_out["total_active_packs"] = (
+        df_out["data_pack_active"].astype(float) + 
+        df_out["voice_pack_active"].astype(float) + 
+        df_out["vas_active"].astype(float) + 
+        df_out["roaming_active"].astype(float)
+    )
+    
+    # 5. Combined risk interaction
+    df_out["churn_risk_interaction"] = (
+        df_out["usage_drop_pct"].astype(float) * 
+        df_out["recharge_drop_pct"].astype(float) * 
+        df_out["inactive_days"].astype(float)
+    )
+    
+    return df_out
+
+def create_preprocessing_pipeline():
+    """Creates a ColumnTransformer pipeline for feature imputing and categorical one-hot encoding."""
+    numerical_transformer = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="median"))
+    ])
+    
+    categorical_transformer = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False))
+    ])
+    
     binary_transformer = Pipeline(steps=[
         ("imputer", SimpleImputer(strategy="constant", fill_value=0))
     ])
@@ -190,11 +318,7 @@ def transform_uploaded_dataset(df_raw, preprocessor_path="models/preprocessor.jo
     df_engineered = engineer_features(df_raw)
     processed_arr = preprocessor.transform(df_engineered)
     
-    num_features = NUMERICAL_COLS
-    cat_encoder = preprocessor.named_transformers_["cat"].named_steps["onehot"]
-    cat_features = list(cat_encoder.get_feature_names_out(CATEGORICAL_COLS))
-    bin_features = BINARY_COLS
-    feature_names = num_features + cat_features + bin_features
+    feature_names = get_feature_names(preprocessor)
     
     return pd.DataFrame(processed_arr, columns=feature_names, index=df_raw.index)
 
