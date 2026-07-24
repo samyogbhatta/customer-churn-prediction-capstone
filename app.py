@@ -1388,7 +1388,7 @@ elif app_mode == "Customer Details":
             st.markdown(f"**SIM Type:** {customer_row['sim_type'].values[0]}")
             st.markdown(f"**Tenure:** {customer_row['tenure_days'].values[0]} days")
             
-            st.markdown("### 📱 Active Packages")
+            st.markdown("### Active Packages")
             st.write("Data Pack: ", "✅ Yes" if customer_row["data_pack_active"].values[0] == 1 else "❌ No")
             st.write("Voice Pack: ", "✅ Yes" if customer_row["voice_pack_active"].values[0] == 1 else "❌ No")
             st.write("VAS (Value Added): ", "✅ Yes" if customer_row["vas_active"].values[0] == 1 else "❌ No")
