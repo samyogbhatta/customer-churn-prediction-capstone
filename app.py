@@ -249,7 +249,7 @@ def get_human_readable_reasons(contributions, top_n=3, mode="risk"):
 def process_uploaded_data(uploaded_df_raw, _explainer_instance):
     X_input = uploaded_df_raw.drop(columns=["customer_id", "churn"], errors="ignore")
     X_processed = _explainer_instance.get_preprocessed_df(X_input)
-    probs = _explainer_instance.model.predict_proba(X_processed)[:, 1]
+    probs = _explainer_instance.model.predict_proba(X_processed.values)[:, 1]
     return probs
 
 @st.cache_data
