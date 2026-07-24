@@ -19,6 +19,8 @@ class ChurnExplainer:
             raise FileNotFoundError(f"Model not found at {model_path}. Run training first.")
         self.model = XGBClassifier()
         self.model.load_model(model_path)
+        # Clear feature names to avoid validation errors when using numpy arrays
+        self.model.get_booster().feature_names = None
         
         # Load the preprocessor
         if not os.path.exists(preprocessor_path):
