@@ -427,22 +427,52 @@ if "uploaded_df" not in st.session_state:
             )
         else:
             st.info("Demo CSV not found. Run `python src/data_generator.py` to generate data first.")
-
         # Load Demo Dataset button — loads the demo sample (not training data)
         DATA_PATH = "data/nepal_telecom_churn_main.csv"
         df_train = load_dataset(DATA_PATH)
 
-        if df_demo_sample is not None:
-            if st.button("🚀 Load Demo Dataset", use_container_width=True):
-                errors = process_and_store_uploaded_data(df_demo_sample, "demo_upload_sample.csv")
-                if errors:
-                    st.error(f"Demo dataset is missing columns: {errors}")
+        # Three-column actions for data handling
+        col_dl_btn, col_demo_btn, col_full_btn = st.columns(3)
+        # 1️⃣ Download CSV Template (sample without churn)
+        with col_dl_btn:
+            sample_df = df_demo_sample.copy() if df_demo_sample is not None else pd.DataFrame()
+            if not sample_df.empty:
+                if "churn" in sample_df.columns:
+                    sample_df = sample_df.drop(columns=["churn"])
+                sample_csv_data = sample_df.head(10).to_csv(index=False)
+                st.download_button(
+                    label="📥 Download CSV Template",
+                    data=sample_csv_data,
+                    file_name="nepal_telecom_churn_template.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+        # 2️⃣ Load Demo Sample (50‑row demo without real churn)
+        with col_demo_btn:
+            if st.button("🚀 Load Demo Sample", use_container_width=True):
+                if df_demo_sample is not None:
+                    errors = process_and_store_uploaded_data(df_demo_sample, "demo_upload_sample.csv")
+                    if errors:
+                        st.error(f"Demo dataset is missing columns: {errors}")
+                    else:
+                        st.success("Demo data loaded! (50 sample customers)")
+                        st.rerun()
                 else:
-                    st.success("Demo data loaded! (50 sample customers)")
-                    st.rerun()
-        elif df_train is not None:
-            st.caption("⚠️ Demo sample CSV not found — using training data as fallback.")
-            
+                    st.info("Demo CSV not found. Generate it first.")
+        # 3️⃣ Load Full Training Data (contains true churn labels)
+        with col_full_btn:
+            if st.button("🔎 Load Full Training Data", use_container_width=True):
+                df_train = load_dataset(DATA_PATH)
+                if df_train is not None:
+                    errors = process_and_store_uploaded_data(df_train, "nepal_telecom_churn_main.csv")
+                    if errors:
+                        st.error(f"Training dataset is missing columns: {errors}")
+                    else:
+                        st.success("Full training data loaded! Accuracy will reflect real churn labels.")
+                        st.rerun()
+                else:
+                    st.error("Training CSV not found at the expected path.")
+        
     with col_upload_side:
         st.markdown("""
         <div style='padding: 10px 0px;'>
@@ -654,6 +684,11 @@ if app_mode != "Simulator":
                 ))
                 fig3.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=130, margin=dict(l=10, r=10, t=30, b=0))
                 st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
+                # Explain the source of the displayed accuracy
+                if accuracy_source == "Test Set":
+                    st.caption("⚙️ Accuracy is from the model’s held‑out test set (≈85%). Upload a CSV that includes a true `churn` column to compute live accuracy on your data.")
+                else:
+                    st.caption("✅ Accuracy computed on the uploaded dataset’s actual churn labels.")
                 st.markdown(f'<div style="text-align: center; color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-top: -10px;">Pipeline Confidence · {accuracy_source}</div>', unsafe_allow_html=True)
 
         with kpi_cols[3]:
